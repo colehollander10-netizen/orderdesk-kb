@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Thin launcher so the team can run `orderdesk-kb ...` without remembering the
+# `python3 -m orderdesk_kb` form. Resolves the repo root from this script's
+# location, so it works regardless of where it's invoked from.
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# Run the package from the repo root so it's importable and kb.db (which lives
+# beside the package) resolves no matter where the user invokes this from.
+exec env PYTHONPATH="${REPO_ROOT}${PYTHONPATH:+:${PYTHONPATH}}" \
+    python3 -m orderdesk_kb "$@"
