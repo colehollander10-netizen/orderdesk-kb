@@ -5,7 +5,14 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# Prefer the repo's virtualenv interpreter when present: the optional semantic
+# extra (model2vec) is installed there, not in system python3. Without this,
+# `ask`/`search` would silently fall back to lexical for anyone invoking via
+# this launcher (e.g. the /orderdesk skill) even after `embed`. Falls back to
+# system python3 so a lexical-only, venv-free install still works.
+PYTHON="${REPO_ROOT}/.venv/bin/python"
+[ -x "${PYTHON}" ] || PYTHON="python3"
 # Run the package from the repo root so it's importable and kb.db (which lives
 # beside the package) resolves no matter where the user invokes this from.
 exec env PYTHONPATH="${REPO_ROOT}${PYTHONPATH:+:${PYTHONPATH}}" \
-    python3 -m orderdesk_kb "$@"
+    "${PYTHON}" -m orderdesk_kb "$@"

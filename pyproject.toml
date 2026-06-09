@@ -8,6 +8,12 @@ requires-python = ">=3.10"
 # The one external tool is the `defuddle` CLI, installed via npm (see README).
 dependencies = []
 
+[project.optional-dependencies]
+# Semantic/hybrid search. Optional on purpose: the core CLI must stay
+# zero-dependency and fully functional (lexical) without this extra.
+# model2vec provides small static embeddings that run offline on CPU.
+semantic = ["model2vec>=0.3"]
+
 [project.scripts]
 orderdesk-kb = "orderdesk_kb.cli:main"
 

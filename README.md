@@ -28,12 +28,19 @@ run offline.
    and chunks it into ~6,000 searchable sections (by heading where the article
    has them, by packed paragraphs where it doesn't).
 2. The sections go into **SQLite FTS5**, which provides BM25 ranking.
-3. **`search` / `ask`** query that local index — pure lexical retrieval, no LLM,
-   so it runs anywhere with zero keys and zero network.
+3. Optionally, **`embed`** adds a semantic layer: each section gets a small
+   local vector (model2vec static embeddings, ~30 MB model, CPU-only) stored
+   right inside `kb.db`, so "connect my store" can find the Shopify page even
+   though it shares no words with it.
+4. **`search` / `ask`** query that local index. With embeddings present they
+   run **hybrid** retrieval — BM25 and nearest-vector rankings fused with
+   Reciprocal Rank Fusion — and fall back to pure lexical otherwise. Either
+   way: no LLM at query time, no API key, no network.
 
 `sync` is **incremental**: it stores each page's sitemap `lastmod` and skips
 unchanged pages on re-run, so monthly refreshes only fetch what actually
-changed.
+changed. It also re-embeds just the refreshed pages when the semantic extra is
+installed.
 
 ## Setup
 
@@ -53,39 +60,65 @@ site-packages, where it isn't:
 pip install -e .
 ```
 
+To enable semantic/hybrid search (optional — everything works without it):
+
+```bash
+pip install -e ".[semantic]"     # adds model2vec (small, CPU-only)
+orderdesk-kb embed               # vectorize the index (~30 MB model, one-time download)
+```
+
 ## Usage
 
 ```bash
 orderdesk-kb sync                 # build / refresh the index (incremental)
 orderdesk-kb sync --force         # re-fetch every page
 orderdesk-kb sync --limit 12      # quick partial sync (testing)
+orderdesk-kb embed                # build/refresh semantic vectors (optional)
+orderdesk-kb embed --force        # re-embed everything (e.g. model change)
 
 orderdesk-kb search "twig custom fields"      # ranked list of passages
 orderdesk-kb ask "how do I connect Shopify"   # single best answer + confidence
+orderdesk-kb search "..." --mode lexical      # force BM25 only
+orderdesk-kb search "..." --mode semantic     # force vectors only
+orderdesk-kb search "..." --mode hybrid       # force fusion (default when embedded)
 
-orderdesk-kb stats                # index size
+orderdesk-kb stats                # index size + embedding coverage
 orderdesk-kb --json search "..."  # machine-readable output (any command)
 ```
 
+### Search modes
+
+- **lexical** — SQLite FTS5 BM25. Tries all-terms-AND first for precision,
+  falls back to any-term-OR so one off-corpus word never zeroes the results.
+- **semantic** — cosine similarity over local embeddings; finds meaning, not
+  words ("link my storefront" → the Shopify guide).
+- **hybrid** *(auto default when embeddings exist)* — runs both and fuses the
+  rankings with Reciprocal Rank Fusion: sections both rankers like win.
+
 ### Confidence labels (`ask`)
 
-`high` / `medium` / `low` reflect how clearly the top result separates from the
-runner-up — not certainty about correctness. Because this is **lexical** search,
-short queries made of common words (e.g. "what is order desk") legitimately read
-`low` even when the answer is right: every word in them appears across the whole
-corpus, so the match can't be confident. That's honest, not a bug.
+With embeddings, confidence comes from the top hit's **cosine similarity** —
+an absolute, query-comparable signal, which fixes the old weakness where
+common-word questions always read `low`. It's **high / low / none**: the
+threshold (≥0.66) is calibrated against the live corpus so on-topic questions
+read `high` and questions the KB can't answer (e.g. "how do I file my taxes")
+read `low`. There's no `medium` band — for this small static model a mid score
+is noise, not partial confidence, so labeling it would over-promise.
+
+Lexical-only indexes (no embeddings) keep the original heuristic: high/medium/
+low from how clearly the top result separates from the runner-up.
 
 ### `--json` mode
 
-Every command accepts `--json` for structured output. This is deliberate: a
-future `/orderdesk` agent skill can wrap this CLI instead of reimplementing
-retrieval.
+Every command accepts `--json` for structured output. This is deliberate: the
+`/orderdesk` agent skill wraps this CLI instead of reimplementing retrieval.
+`search --json` returns `{"mode": ..., "hits": [...]}`; `ask --json` includes
+`confidence`, `mode`, `similarity`, and `sources`.
 
 ## Scope & boundaries
 
 - **Public docs only.** Indexes `help.orderdesk.com`. Never touches internal or
   customer data.
-- **No LLM, no API key.** Retrieval is local BM25. This keeps it shareable and
-  offline; the tradeoff is no semantic understanding (it matches words, not
-  meaning).
-- **`kb.db` is generated** — it's gitignored. Rebuild it with `sync`.
+- **No LLM, no API key.** Retrieval is local BM25 + (optionally) local static
+  embeddings. Nothing leaves the machine at query time.
+- **`kb.db` is generated** — it's gitignored. Rebuild it with `sync` + `embed`.

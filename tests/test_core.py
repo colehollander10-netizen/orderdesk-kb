@@ -10,7 +10,8 @@ Run: python3 -m pytest tests/  (or python3 -m unittest discover tests)
 import unittest
 
 from orderdesk_kb.extract import _chunk, _is_video_stub, _strip_images, Section
-from orderdesk_kb.index import _query_terms, _escape_query
+from orderdesk_kb import index as index_mod
+from orderdesk_kb.index import _query_terms, _escape_query, _match_candidates
 from orderdesk_kb.cli import _confidence
 from orderdesk_kb.index import Hit
 
@@ -71,6 +72,62 @@ class QueryTests(unittest.TestCase):
 
     def test_escape_quotes_each_term(self):
         self.assertEqual(_escape_query("split orders"), '"split" OR "orders"')
+
+    def test_match_candidates_try_and_before_or(self):
+        self.assertEqual(
+            _match_candidates("split orders"),
+            ['"split" AND "orders"', '"split" OR "orders"'],
+        )
+
+    def test_match_candidates_single_term(self):
+        self.assertEqual(_match_candidates("shopify"), ['"shopify"'])
+
+
+class LexicalSearchTests(unittest.TestCase):
+    """AND-first precision with OR fallback, against a real FTS5 index."""
+
+    def setUp(self):
+        self.conn = index_mod.connect(":memory:")
+        index_mod.init_schema(self.conn)
+        index_mod.upsert_page(
+            self.conn,
+            url="http://kb/split",
+            title="Split Orders",
+            lastmod="x", published="", word_count=10,
+            synced_at="2026-01-01T00:00:00Z",
+            sections=[Section(
+                url="http://kb/split", anchor_url="http://kb/split#how",
+                title="Split Orders", heading="How",
+                heading_path="Split Orders > How",
+                text="You can split orders into multiple shipments.",
+            )],
+        )
+        index_mod.upsert_page(
+            self.conn,
+            url="http://kb/general",
+            title="Working With Orders",
+            lastmod="x", published="", word_count=10,
+            synced_at="2026-01-01T00:00:00Z",
+            sections=[Section(
+                url="http://kb/general", anchor_url="http://kb/general#intro",
+                title="Working With Orders", heading="Intro",
+                heading_path="Working With Orders > Intro",
+                text="Orders arrive in the folder. Orders can be edited.",
+            )],
+        )
+        self.conn.commit()
+
+    def test_and_filters_out_partial_matches(self):
+        hits = index_mod.search(self.conn, "split orders")
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0].anchor_url, "http://kb/split#how")
+
+    def test_or_fallback_when_a_term_is_off_corpus(self):
+        # "zorblat" appears nowhere; AND yields nothing, OR still rescues
+        # the query instead of returning an empty result set.
+        hits = index_mod.search(self.conn, "split zorblat")
+        self.assertTrue(hits)
+        self.assertEqual(hits[0].anchor_url, "http://kb/split#how")
 
 
 class ConfidenceTests(unittest.TestCase):
