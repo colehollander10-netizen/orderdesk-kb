@@ -122,3 +122,10 @@ Every command accepts `--json` for structured output. This is deliberate: the
 - **No LLM, no API key.** Retrieval is local BM25 + (optionally) local static
   embeddings. Nothing leaves the machine at query time.
 - **`kb.db` is generated** — it's gitignored. Rebuild it with `sync` + `embed`.
+
+### Help Scout (agent skill only)
+
+The `/orderdesk` skill can use a **custom Help Scout MCP** for read-only ticket
+context, then answer from this KB. It must **not** draft or send Help Scout
+replies — chat context only. See `docs/helpscout-mcp-prep.md` and
+`skill/SKILL.md`.
