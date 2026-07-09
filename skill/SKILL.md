@@ -18,6 +18,14 @@ before trying the local KB first.
 - Keep Help Scout read-only. Do not send replies, draft customer-facing text,
   tag, assign, close, edit, publish docs, run workflows, download attachments,
   or perform writes.
+- Do not create Help Scout drafts, saved replies, notes, draft replies, or any
+  customer-visible/helpdesk artifact. If Cole later asks for customer copy, put
+  it in chat only.
+- In Help Scout/support-context mode, do not write draft responses, sample
+  replies, or customer-facing copy. If Cole asks "what should I say?" in the
+  same request as ticket research, give an internal brief plus response
+  structure/questions only. Write pasteable customer copy only after Cole
+  explicitly asks for a customer-facing reply as a separate follow-up.
 - Do not fetch real ticket content unless Cole has explicitly asked for a
   Help Scout/ticket-context task in the current conversation or a named Order
   Desk reviewer has approved the beta/test boundary.
@@ -32,7 +40,8 @@ before trying the local KB first.
   IDs, store URLs, API keys, credentials, payment data, and raw customer text
   unless the bridge has already masked them into placeholders.
 - Treat ticket history as evidence, not truth. Older repeated tickets do not
-  override newer tickets, current docs, code, logs, or policy.
+  override newer tickets, current public docs, or explicitly approved current
+  internal sources.
 - Follow evidence-or-silence: every claim in an internal brief needs a source,
   or say "not found."
 - Slack, codebase, logs, order/store data, and internal docs are out of scope
@@ -105,37 +114,75 @@ so future raw fields are masked before they become model-visible. If that final
 gate returns `masking_failed`, stop and report the masking blocker instead of
 trying to recover the raw payload.
 
+### Model-visible Help Scout contract
+
+Help Scout output visible to the LLM must be bridge-produced, masked, and
+minimized. Accept only sanitized fields such as ticket id/number/link, source
+type, status, date, mailbox/team if present, masked snippet/summary, matching
+reason, masking status, and redaction notes.
+
+Stop before analysis if a Help Scout result exposes raw customer text, customer
+names, emails, phone numbers, order IDs, store domains/URLs, credentials,
+payment data, tokens, or any absent/failed masking status. Report the masking
+blocker; do not summarize, quote, transform, or manually redact the payload.
+
 ## Support-context workflow
 
 Use this flow when Cole asks for a ticket brief, similar-ticket recall, Help
 Scout + KB research, or support-agent beta work.
+
+### Real-ticket preflight
+
+Before reading a real Help Scout ticket, confirm:
+
+- Cole explicitly requested a Help Scout/ticket-context task in this
+  conversation, or a named Order Desk reviewer approved this exact beta/test.
+- The bridge is read-only and reachable (`helpscout_status` or `doctor`).
+- The result shape includes masking status/metadata. If it is absent, stop.
+- Search terms are masked exact error phrases, public integration/provider
+  names, endpoint names, template/rule/folder terms, or redacted workflow
+  phrases. Do not search on raw customer text.
+- The user prompt, shell command, and final answer contain no raw private
+  customer/internal data.
+
+### Research steps
 
 1. Classify the request.
    - Public product/docs question: use KB `ask` or `search`.
    - Sanitized ticket/workflow question: use KB `triage`.
    - Approved Help Scout context: use Help Scout search/read plus KB.
 2. Extract search keys.
-   - Prioritize raw error messages, integration names, provider names, endpoint
-     names, template/rule/folder terms, and short exact phrases.
+   - Prioritize masked exact error phrases, public integration names, provider
+     names, endpoint names, template/rule/folder terms, and redacted workflow
+     phrases.
    - Try more than one search query before saying no similar ticket exists.
 3. Search Help Scout.
-   - Start narrow with `status: "closed"` or `status: "all"`, `limit: 5-10`,
+   - Use at most 3 Help Scout search queries for v0.
+   - Start narrow with `status: "closed"` or `status: "all"`, `limit: 5`,
      `sortField: "modifiedAt"`, `sortOrder: "desc"`.
    - Broaden only if the first query misses. Prefer focused terms over dumping
      whole ticket text into search.
    - Fetch threads only for selected candidate conversations, not every result.
+     Fetch at most 3 candidate conversations for v0.
 4. Search the KB.
    - Run `triage` on a sanitized description.
    - Run `search` for specific integrations, settings, or public-doc links that
-     could be pasted to a customer.
+     could be useful to Cole. Include at most 5 KB links in the brief.
 5. Apply freshness and authority.
    - Show source type and date for every material source.
-   - Prefer current public docs, code/log/policy evidence when available, then
-     newer tickets, then older tickets.
+   - Prefer current public docs, then explicitly approved current internal
+     sources, then newer sanitized tickets, then older sanitized tickets.
+   - Label every similar ticket `current` (0-90 days old), `recent` (91-365
+     days old), `stale` (over 365 days old), or `unknown date`.
+   - For every similar ticket, note product area, integration/provider, and
+     whether it conflicts with current public docs.
    - Do not majority-vote stale history. If four old tickets say one thing and
      one newer/current source says another, flag the conflict and treat the old
      answer as potentially stale.
-6. Produce an internal brief, not a customer reply.
+   - Do not make older tickets the likely pattern unless current public KB or
+     an explicitly approved current source supports the same answer.
+6. Produce an internal brief, not a customer reply. No suggested customer
+   wording, no sample reply, and no draft response section.
 
 ## Internal brief format
 
@@ -145,14 +192,17 @@ Use this shape by default:
 **Support Context Brief**
 
 **What I Checked**
-- Help Scout: <queries, statuses, result count, ticket dates>
+- Preflight: <approval boundary, read-only bridge, masking status>
+- Help Scout: <queries, statuses, result count, ticket dates, caps used>
 - Public KB: <queries and source links>
 
 **Likely Pattern**
-<one short sourced synthesis, or "not found">
+<one short sourced synthesis, or "not found"; do not rely on stale tickets
+unless current KB/current approved evidence supports them>
 
 **Similar Tickets**
-- <ticket number/id/link> — <date/status> — <why it matches> — <freshness caveat>
+- <ticket number/id/link> — <date/status/freshness label> — <product
+  area/integration> — <why it matches> — <doc conflict or freshness caveat>
 
 **Public KB Links**
 - <title> — <url> — <why it matters>
@@ -162,6 +212,10 @@ Use this shape by default:
 
 **Suggested Next Step**
 <one practical support investigation step or question>
+
+**Reply Boundary**
+No customer-facing draft written. Ask Cole whether he wants pasteable copy
+after he reviews the evidence.
 ```
 
 If Cole asks for a customer-facing reply afterward, write clean pasteable copy
