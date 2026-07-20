@@ -165,6 +165,8 @@ class SemanticSearchTests(unittest.TestCase):
         )
         self.assertEqual(hits[0].anchor_url, f"{SHOPIFY_URL}#connect")
         self.assertGreater(hits[0].similarity, 0.9)
+        self.assertEqual(hits[0].lastmod, "2026-01-01")
+        self.assertEqual(hits[0].synced_at, "2026-01-01T00:00:00Z")
 
     def test_requires_embeddings(self):
         conn = make_db()

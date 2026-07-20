@@ -8,11 +8,21 @@ Run: python3 -m pytest tests/  (or python3 -m unittest discover tests)
 """
 
 import unittest
+import io
+from contextlib import nullcontext
+from contextlib import redirect_stdout
+from unittest.mock import Mock, patch
 
 from orderdesk_kb.extract import _chunk, _is_video_stub, _strip_images, Section
 from orderdesk_kb import index as index_mod
 from orderdesk_kb.index import _query_terms, _escape_query, _match_candidates
-from orderdesk_kb.cli import _confidence
+from orderdesk_kb.cli import (
+    _confidence,
+    _source_kind,
+    _triage_payload,
+    build_parser,
+    cmd_sync,
+)
 from orderdesk_kb.index import Hit
 
 
@@ -83,6 +93,113 @@ class QueryTests(unittest.TestCase):
         self.assertEqual(_match_candidates("shopify"), ['"shopify"'])
 
 
+class SyncSafetyTests(unittest.TestCase):
+    def test_sync_defaults_are_site_safe(self):
+        args = build_parser().parse_args(["sync"])
+        self.assertEqual(args.workers, 1)
+        self.assertEqual(args.delay, 2.0)
+
+    def test_cmd_sync_passes_safety_settings_to_crawler(self):
+        args = build_parser().parse_args(["--db", ":memory:", "--json", "sync"])
+        conn = Mock()
+        result = Mock(fetched=0, skipped=0, empty=0, failed=0, errors=[])
+
+        with patch("orderdesk_kb.cli.index_mod.connect", return_value=conn), \
+             patch("orderdesk_kb.cli.run_sync", return_value=result) as run_sync, \
+             patch("orderdesk_kb.cli.index_mod.stats", return_value={"pages": 0, "sections": 0}), \
+             patch("orderdesk_kb.cli.embed_mod.is_available", return_value=False), \
+             patch("orderdesk_kb.cli._sync_lock", return_value=nullcontext()):
+            with redirect_stdout(io.StringIO()):
+                cmd_sync(args)
+
+        run_sync.assert_called_once()
+        self.assertEqual(run_sync.call_args.kwargs["max_workers"], 1)
+        self.assertEqual(run_sync.call_args.kwargs["min_interval"], 2.0)
+        conn.close.assert_called_once()
+
+
+class TriageTests(unittest.TestCase):
+    def test_source_kind_labels_common_doc_areas(self):
+        self.assertEqual(
+            _source_kind("https://help.orderdesk.com/order-desk-101/how-to-split-orders/"),
+            "general",
+        )
+        self.assertEqual(
+            _source_kind("https://help.orderdesk.com/integration-setup-guides/x/"),
+            "integration",
+        )
+
+    def test_triage_command_defaults_to_support_brief_limit(self):
+        args = build_parser().parse_args(["triage", "how do I split an order?"])
+        self.assertEqual(args.limit, 6)
+        self.assertEqual(args.mode, "auto")
+
+    def test_triage_payload_carries_boundary_and_sources(self):
+        payload = _triage_payload(
+            "how do I split an order?",
+            "hybrid",
+            [
+                Hit(
+                    rank=-1.0,
+                    title="Split Orders",
+                    heading_path="Split Orders > How",
+                    anchor_url="https://help.orderdesk.com/x#how",
+                    snippet="Split orders into multiple shipments.",
+                    text="Split orders into multiple shipments.",
+                    similarity=0.72,
+                    lastmod="2026-07-10T12:00:00+00:00",
+                    published="2025-06-01T09:30:00+00:00",
+                    synced_at="2026-07-14T16:45:00+00:00",
+                )
+            ],
+        )
+
+        self.assertEqual(payload["confidence"], "high")
+        self.assertIn("Public Order Desk docs only", payload["boundary"])
+        self.assertEqual(payload["sources"][0]["section"], "Split Orders > How")
+        self.assertEqual(payload["sources"][0]["kind"], "public-doc")
+        self.assertEqual(payload["sources"][0]["similarity"], 0.72)
+        self.assertEqual(
+            payload["sources"][0]["source_dates"],
+            {
+                "published_at": "2025-06-01T09:30:00+00:00",
+                "modified_at": "2026-07-10T12:00:00+00:00",
+                "fetched_at": "2026-07-14T16:45:00+00:00",
+            },
+        )
+        self.assertIn(
+            "does not prove the live page is unchanged",
+            payload["freshness_note"],
+        )
+
+    def test_triage_payload_handles_no_public_kb_match(self):
+        payload = _triage_payload("private customer billing issue", "hybrid", [])
+        self.assertEqual(payload["confidence"], "none")
+        self.assertEqual(payload["sources"], [])
+        self.assertIn("did not surface coverage", payload["recommended_next_step"])
+
+    def test_triage_source_dates_remain_unknown_when_index_metadata_is_missing(self):
+        payload = _triage_payload(
+            "split an order",
+            "lexical",
+            [
+                Hit(
+                    rank=-1.0,
+                    title="Split Orders",
+                    heading_path="Split Orders > How",
+                    anchor_url="https://help.orderdesk.com/x#how",
+                    snippet="Split orders into multiple shipments.",
+                    text="Split orders into multiple shipments.",
+                )
+            ],
+        )
+
+        self.assertEqual(
+            payload["sources"][0]["source_dates"],
+            {"published_at": None, "modified_at": None, "fetched_at": None},
+        )
+
+
 class LexicalSearchTests(unittest.TestCase):
     """AND-first precision with OR fallback, against a real FTS5 index."""
 
@@ -121,6 +238,9 @@ class LexicalSearchTests(unittest.TestCase):
         hits = index_mod.search(self.conn, "split orders")
         self.assertEqual(len(hits), 1)
         self.assertEqual(hits[0].anchor_url, "http://kb/split#how")
+        self.assertEqual(hits[0].lastmod, "x")
+        self.assertEqual(hits[0].published, "")
+        self.assertEqual(hits[0].synced_at, "2026-01-01T00:00:00Z")
 
     def test_or_fallback_when_a_term_is_off_corpus(self):
         # "zorblat" appears nowhere; AND yields nothing, OR still rescues

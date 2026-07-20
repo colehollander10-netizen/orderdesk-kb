@@ -4,12 +4,13 @@ Strategy:
   1. Read the sitemap for every URL + its lastmod.
   2. Skip URLs whose lastmod already matches the index (incremental re-sync;
      Order Desk ships monthly, so most pages are unchanged each run).
-  3. For the rest, extract + chunk with a small thread pool and a rate limit,
+  3. For the rest, extract + chunk with one worker and a global rate limit,
      then upsert. Empty (category) pages are recorded but contribute no
      sections.
 
-Concurrency is capped low and a per-request delay is enforced: as a future
-Order Desk intern, this should read as a courteous client, not a scraper.
+Concurrency is deliberately serialized by default and a per-request delay is
+enforced: as a future Order Desk intern, this should read as a courteous
+client, not a scraper.
 """
 
 from __future__ import annotations
@@ -25,8 +26,8 @@ from . import index as index_mod
 from .extract import extract_page
 from .sitemap import SitemapEntry, fetch_all_entries
 
-MAX_WORKERS = 4
-MIN_SECONDS_BETWEEN_REQUESTS = 0.25  # global rate limit across workers
+DEFAULT_MAX_WORKERS = 1
+DEFAULT_MIN_SECONDS_BETWEEN_REQUESTS = 2.0  # global rate limit across workers
 
 
 @dataclass
@@ -64,6 +65,8 @@ def sync(
     conn: sqlite3.Connection,
     force: bool = False,
     limit: int | None = None,
+    max_workers: int = DEFAULT_MAX_WORKERS,
+    min_interval: float = DEFAULT_MIN_SECONDS_BETWEEN_REQUESTS,
     progress=lambda msg: None,
 ) -> SyncResult:
     """Run a full incremental sync. `limit` caps pages for de-risk runs."""
@@ -82,7 +85,7 @@ def sync(
             to_fetch.append(entry)
     progress(f"to fetch: {len(to_fetch)} (skipped {result.skipped} unchanged)")
 
-    limiter = _RateLimiter(MIN_SECONDS_BETWEEN_REQUESTS)
+    limiter = _RateLimiter(min_interval)
 
     def work(entry: SitemapEntry):
         limiter.wait()
@@ -90,7 +93,7 @@ def sync(
         return entry, page
 
     # Writes happen on the main thread; sqlite connections aren't thread-safe.
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = {pool.submit(work, e): e for e in to_fetch}
         for future in as_completed(futures):
             entry = futures[future]

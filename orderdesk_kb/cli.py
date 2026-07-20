@@ -1,10 +1,11 @@
 """orderdesk-kb — offline search over the public Order Desk knowledge base.
 
 Commands:
-  sync     crawl the public KB into the local index (incremental)
+  sync     crawl the public KB into the local index (incremental, locked)
   embed    build/refresh the optional semantic vectors (see embed.py)
   search   ranked passages for a query (list of hits)
   ask      single best answer for a question, with a confidence label
+  triage   support research brief with ranked public-doc sources
   stats    show index size
 
 `search` and `ask` take --mode {auto,lexical,semantic,hybrid}. Auto picks
@@ -20,13 +21,16 @@ search runs entirely against the local kb.db.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 from . import embed as embed_mod
 from . import index as index_mod
 from .index import DEFAULT_DB_PATH, Hit
+from .sync import DEFAULT_MAX_WORKERS, DEFAULT_MIN_SECONDS_BETWEEN_REQUESTS
 from .sync import sync as run_sync
 
 # Confidence, lexical path: derived from RELATIVE separation, not absolute
@@ -62,8 +66,47 @@ CONFIDENCE_HIGH_SIMILARITY = 0.66
 SEARCH_MODES = ("auto", "lexical", "semantic", "hybrid")
 
 
+class SyncAlreadyRunning(RuntimeError):
+    pass
+
+
 def _db_path(args) -> Path:
     return Path(args.db) if args.db else DEFAULT_DB_PATH
+
+
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return parsed
+
+
+def _positive_float(value: str) -> float:
+    parsed = float(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be greater than 0")
+    return parsed
+
+
+@contextmanager
+def _sync_lock(db_path: Path):
+    lock_path = (
+        DEFAULT_DB_PATH.with_suffix(".sync.lock")
+        if str(db_path) == ":memory:"
+        else Path(f"{db_path}.sync.lock")
+    )
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("w") as handle:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise SyncAlreadyRunning(
+                f"sync already running (lock held at {lock_path})"
+            ) from exc
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _confidence(hits: list[Hit]) -> str:
@@ -134,34 +177,49 @@ def _run_query(conn, query: str, limit: int, mode: str) -> tuple[str, list[Hit]]
 
 
 def cmd_sync(args) -> int:
-    conn = index_mod.connect(_db_path(args))
+    db_path = _db_path(args)
     progress = (lambda m: None) if args.json else (lambda m: print(m, file=sys.stderr))
-    result = run_sync(conn, force=args.force, limit=args.limit, progress=progress)
-    # Keep vectors in step with the crawl automatically. If the semantic extra
-    # isn't installed this is a no-op hint, never an error — sync must keep
-    # working on a zero-dependency install.
-    embedded = 0
-    if embed_mod.is_available():
-        try:
-            embedded = index_mod.embed_missing(conn, progress=progress)
-        except RuntimeError as exc:  # model load failure OR model mismatch —
-            # either way the crawl itself succeeded; report and move on.
-            progress(f"semantic: skipped ({exc})")
-    else:
-        progress(
-            "semantic: model2vec not installed; lexical-only "
-            "(pip install -e '.[semantic]' to enable)"
-        )
-    payload = {
-        "fetched": result.fetched,
-        "skipped": result.skipped,
-        "empty": result.empty,
-        "failed": result.failed,
-        "errors": result.errors,
-        "embedded": embedded,
-        **index_mod.stats(conn),
-    }
-    conn.close()
+    try:
+        with _sync_lock(db_path):
+            conn = index_mod.connect(db_path)
+            try:
+                result = run_sync(
+                    conn,
+                    force=args.force,
+                    limit=args.limit,
+                    max_workers=args.workers,
+                    min_interval=args.delay,
+                    progress=progress,
+                )
+                # Keep vectors in step with the crawl automatically. If the semantic extra
+                # isn't installed this is a no-op hint, never an error — sync must keep
+                # working on a zero-dependency install.
+                embedded = 0
+                if embed_mod.is_available():
+                    try:
+                        embedded = index_mod.embed_missing(conn, progress=progress)
+                    except RuntimeError as exc:  # model load failure OR model mismatch —
+                        # either way the crawl itself succeeded; report and move on.
+                        progress(f"semantic: skipped ({exc})")
+                else:
+                    progress(
+                        "semantic: model2vec not installed; lexical-only "
+                        "(pip install -e '.[semantic]' to enable)"
+                    )
+                payload = {
+                    "fetched": result.fetched,
+                    "skipped": result.skipped,
+                    "empty": result.empty,
+                    "failed": result.failed,
+                    "errors": result.errors,
+                    "embedded": embedded,
+                    **index_mod.stats(conn),
+                }
+            finally:
+                conn.close()
+    except SyncAlreadyRunning as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     if args.json:
         print(json.dumps(payload, indent=2))
     else:
@@ -248,6 +306,104 @@ def cmd_ask(args) -> int:
     return 0
 
 
+def _source_kind(url: str) -> str:
+    if "/order-desk-101/" in url:
+        return "general"
+    if "/integration-setup-guides/" in url:
+        return "integration"
+    if "/apis/" in url or "/api-" in url:
+        return "api"
+    return "public-doc"
+
+
+def _source_payload(hit: Hit) -> dict:
+    return {
+        "title": hit.title,
+        "section": hit.heading_path,
+        "kind": _source_kind(hit.anchor_url),
+        "url": hit.anchor_url,
+        "snippet": hit.snippet,
+        "similarity": round(hit.similarity, 4),
+        "source_dates": {
+            "published_at": hit.published or None,
+            "modified_at": hit.lastmod or None,
+            "fetched_at": hit.synced_at or None,
+        },
+    }
+
+
+def _triage_next_step(confidence: str) -> str:
+    if confidence == "high":
+        return (
+            "Start with the top source, but verify it matches the customer's "
+            "platform and workflow before treating it as primary."
+        )
+    if confidence == "none":
+        return (
+            "The public KB did not surface coverage. Ask a follow-up question "
+            "or verify outside the public docs before drafting."
+        )
+    return (
+        "Review multiple sources before drafting; the match is not strong "
+        "enough to rely on one passage."
+    )
+
+
+def _triage_payload(question: str, mode: str, hits: list[Hit]) -> dict:
+    hits = [h for h in hits if h.text.strip()]
+    confidence = _confidence(hits)
+    return {
+        "question": question,
+        "confidence": confidence,
+        "mode": mode,
+        "recommended_next_step": _triage_next_step(confidence),
+        "boundary": (
+            "Public Order Desk docs only. Use sanitized ticket summaries; do "
+            "not include customer data, secrets, credentials, or internal docs."
+        ),
+        "freshness_note": (
+            "published_at and modified_at come from public page/sitemap metadata "
+            "when available. fetched_at is the local cache acquisition time and "
+            "does not prove the live page is unchanged."
+        ),
+        "sources": [_source_payload(h) for h in hits],
+    }
+
+
+def cmd_triage(args) -> int:
+    conn = index_mod.connect(_db_path(args))
+    try:
+        mode, hits = _run_query(conn, args.question, args.limit, args.mode)
+    finally:
+        conn.close()
+    payload = _triage_payload(args.question, mode, hits)
+    if args.json:
+        print(json.dumps(payload, indent=2))
+        return 0
+
+    print(f"Support research brief [{payload['confidence']} · {payload['mode']}]\n")
+    print(f"Question: {payload['question']}\n")
+    print(f"Next: {payload['recommended_next_step']}\n")
+    if not payload["sources"]:
+        print("Sources: none")
+        return 0
+    print("Sources:")
+    for i, source in enumerate(payload["sources"], 1):
+        print(f"{i}. [{source['kind']}] {source['section']}")
+        print(f"   {source['snippet'].strip()}")
+        dates = source["source_dates"]
+        print(
+            "   Dates: "
+            f"published {dates['published_at'] or 'unknown'} · "
+            f"modified {dates['modified_at'] or 'unknown'} · "
+            f"fetched {dates['fetched_at'] or 'unknown'}"
+        )
+        print(f"   {source['url']}\n")
+    print(f"Freshness: {payload['freshness_note']}\n")
+    print(f"Boundary: {payload['boundary']}")
+    return 0
+
+
 def cmd_embed(args) -> int:
     conn = index_mod.connect(_db_path(args))
     if not embed_mod.is_available():
@@ -307,6 +463,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_sync = sub.add_parser("sync", help="crawl the public KB into the local index")
     p_sync.add_argument("--force", action="store_true", help="re-fetch even unchanged pages")
     p_sync.add_argument("--limit", type=int, help="cap pages (for quick test runs)")
+    p_sync.add_argument(
+        "--workers",
+        type=_positive_int,
+        default=DEFAULT_MAX_WORKERS,
+        help=f"fetch worker count (default: {DEFAULT_MAX_WORKERS})",
+    )
+    p_sync.add_argument(
+        "--delay",
+        type=_positive_float,
+        default=DEFAULT_MIN_SECONDS_BETWEEN_REQUESTS,
+        help=(
+            "minimum seconds between live HTTP requests "
+            f"(default: {DEFAULT_MIN_SECONDS_BETWEEN_REQUESTS})"
+        ),
+    )
     p_sync.set_defaults(func=cmd_sync)
 
     p_embed = sub.add_parser("embed", help="build/refresh semantic vectors for the index")
@@ -329,6 +500,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="retrieval mode (auto = hybrid when embeddings exist, else lexical)",
     )
     p_ask.set_defaults(func=cmd_ask)
+
+    p_triage = sub.add_parser(
+        "triage",
+        help="support research brief with ranked public-doc sources",
+    )
+    p_triage.add_argument("question")
+    p_triage.add_argument("--limit", type=int, default=6)
+    p_triage.add_argument(
+        "--mode", choices=SEARCH_MODES, default="auto",
+        help="retrieval mode (auto = hybrid when embeddings exist, else lexical)",
+    )
+    p_triage.set_defaults(func=cmd_triage)
 
     p_stats = sub.add_parser("stats", help="show index size")
     p_stats.set_defaults(func=cmd_stats)
