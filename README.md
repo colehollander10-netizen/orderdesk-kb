@@ -40,8 +40,9 @@ run offline.
 `sync` is **incremental** and intentionally conservative: it stores each page's
 sitemap `lastmod`, skips unchanged pages on re-run, takes a process lock so two
 refreshes cannot run at once, uses one fetch worker by default, and waits at
-least 2 seconds between live requests. It also re-embeds just the refreshed
-pages when the semantic extra is installed.
+least 2 seconds between every live request, including sitemap discovery and
+page fetches. It also re-embeds just the refreshed pages when the semantic extra
+is installed.
 
 ## Setup
 

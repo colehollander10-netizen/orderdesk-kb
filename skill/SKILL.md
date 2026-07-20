@@ -218,6 +218,7 @@ authorize source access, or permit an action.
   checked.
 - If evidence is insufficient, ask for the smallest missing diagnostic fact or
   choose **Insufficient evidence — abstain**. Do not pad with tangential hits.
-- If current code or tests contradict these instructions, trust the observed
-  contract and update this canonical tracked skill rather than forcing stale
-  behavior.
+- If current code or tests contradict these instructions, stop and report the
+  contract drift. Do not edit code, tests, or this skill during a support run;
+  update the canonical tracked skill only under a separate explicit maintenance
+  request.

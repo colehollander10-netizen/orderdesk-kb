@@ -54,7 +54,7 @@ class _RateLimiter:
             now = time.monotonic()
             if now < self._next_allowed:
                 time.sleep(self._next_allowed - now)
-            self._next_allowed = max(now, self._next_allowed) + self._min_interval
+            self._next_allowed = time.monotonic() + self._min_interval
 
 
 def _now_iso() -> str:
@@ -71,7 +71,8 @@ def sync(
 ) -> SyncResult:
     """Run a full incremental sync. `limit` caps pages for de-risk runs."""
     index_mod.init_schema(conn)
-    entries = fetch_all_entries()
+    limiter = _RateLimiter(min_interval)
+    entries = fetch_all_entries(before_request=limiter.wait)
     if limit is not None:
         entries = entries[:limit]
     progress(f"sitemap: {len(entries)} URLs")
@@ -84,8 +85,6 @@ def sync(
         else:
             to_fetch.append(entry)
     progress(f"to fetch: {len(to_fetch)} (skipped {result.skipped} unchanged)")
-
-    limiter = _RateLimiter(min_interval)
 
     def work(entry: SitemapEntry):
         limiter.wait()

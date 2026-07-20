@@ -105,6 +105,13 @@ class HelpScoutWorkflowContractTests(unittest.TestCase):
         self.assertIn("five minutes", skill)
         self.assertIn("one-time", skill)
 
+    def test_support_run_cannot_mutate_skill_to_resolve_contract_drift(self):
+        skill = " ".join(SKILL.read_text(encoding="utf-8").split())
+
+        self.assertNotIn("update this canonical tracked skill", skill)
+        self.assertIn("stop and report the contract drift", skill)
+        self.assertIn("separate explicit maintenance request", skill)
+
     def test_help_scout_reference_teaches_fact_only_workflow(self):
         reference = " ".join(HELP_SCOUT.read_text(encoding="utf-8").split())
 

@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import stat
 import sys
 from contextlib import contextmanager
 from pathlib import Path
@@ -102,24 +104,91 @@ def _sync_lock(db_path: Path):
         raise SyncLockUnavailable(
             "sync locking is unavailable on this platform; sync did not start"
         )
-    canonical_db = (
-        DEFAULT_DB_PATH.resolve(strict=False)
-        if str(db_path) == ":memory:"
-        else Path(db_path).expanduser().resolve(strict=False)
-    )
+    try:
+        canonical_db = (
+            DEFAULT_DB_PATH.resolve(strict=False)
+            if str(db_path) == ":memory:"
+            else Path(db_path).expanduser().resolve(strict=False)
+        )
+    except (OSError, RuntimeError) as exc:
+        raise SyncLockUnavailable(
+            "sync lock could not be acquired safely; sync did not start"
+        ) from exc
     lock_path = Path(f"{canonical_db}.sync.lock")
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with lock_path.open("w") as handle:
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise SyncLockUnavailable(
+            "sync lock could not be acquired safely; sync did not start"
+        ) from exc
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise SyncLockUnavailable(
+            "sync lock could not be acquired safely; sync did not start"
+        )
+    flags = os.O_CREAT | os.O_RDWR | nofollow
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NONBLOCK", 0)
+    try:
+        fd = os.open(lock_path, flags, 0o600)
+    except OSError as exc:
+        raise SyncLockUnavailable(
+            "sync lock could not be acquired safely; sync did not start"
+        ) from exc
+    try:
         try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            details = os.fstat(fd)
+        except OSError as exc:
+            raise SyncLockUnavailable(
+                "sync lock could not be acquired safely; sync did not start"
+            ) from exc
+        owner_matches = not hasattr(os, "geteuid") or details.st_uid == os.geteuid()
+        if (
+            not stat.S_ISREG(details.st_mode)
+            or details.st_nlink != 1
+            or not owner_matches
+        ):
+            raise SyncLockUnavailable(
+                "sync lock could not be acquired safely; sync did not start"
+            )
+        try:
+            os.fchmod(fd, 0o600)
+        except OSError as exc:
+            raise SyncLockUnavailable(
+                "sync lock could not be acquired safely; sync did not start"
+            ) from exc
+        try:
+            details = os.fstat(fd)
+        except OSError as exc:
+            raise SyncLockUnavailable(
+                "sync lock could not be acquired safely; sync did not start"
+            ) from exc
+        owner_matches = not hasattr(os, "geteuid") or details.st_uid == os.geteuid()
+        if (
+            not stat.S_ISREG(details.st_mode)
+            or details.st_nlink != 1
+            or not owner_matches
+            or stat.S_IMODE(details.st_mode) != 0o600
+        ):
+            raise SyncLockUnavailable(
+                "sync lock could not be acquired safely; sync did not start"
+            )
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
             raise SyncAlreadyRunning(
                 f"sync already running (lock held at {lock_path})"
             ) from exc
+        except OSError as exc:
+            raise SyncLockUnavailable(
+                "sync lock could not be acquired safely; sync did not start"
+            ) from exc
         try:
             yield
         finally:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
 
 
 def _confidence(hits: list[Hit]) -> str:

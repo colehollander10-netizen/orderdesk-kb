@@ -16,11 +16,15 @@ import subprocess
 import sys
 import tempfile
 from contextlib import nullcontext
+from contextlib import redirect_stderr
 from contextlib import redirect_stdout
 from unittest.mock import Mock, patch
 
 from orderdesk_kb.extract import _chunk, _is_video_stub, _strip_images, Section
 from orderdesk_kb import index as index_mod
+from orderdesk_kb import sitemap as sitemap_mod
+from orderdesk_kb import sync as sync_mod
+from orderdesk_kb.extract import Page
 from orderdesk_kb.index import _query_terms, _escape_query, _match_candidates
 from orderdesk_kb.cli import (
     _confidence,
@@ -30,6 +34,7 @@ from orderdesk_kb.cli import (
     build_parser,
     cmd_sync,
     SyncAlreadyRunning,
+    SyncLockUnavailable,
 )
 from orderdesk_kb.index import Hit
 
@@ -138,6 +143,180 @@ class SyncSafetyTests(unittest.TestCase):
                         with self.assertRaises(SyncAlreadyRunning):
                             with _sync_lock(alias):
                                 self.fail("alias acquired an already-held sync lock")
+
+    def test_existing_regular_lock_preserves_content_and_is_owner_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / "kb.db"
+            lock_path = Path(f"{db_path.resolve()}.sync.lock")
+            lock_path.write_text("existing lock metadata\n", encoding="utf-8")
+            lock_path.chmod(0o644)
+
+            with _sync_lock(db_path):
+                self.assertEqual(
+                    lock_path.read_text(encoding="utf-8"),
+                    "existing lock metadata\n",
+                )
+                self.assertEqual(lock_path.stat().st_mode & 0o777, 0o600)
+
+            self.assertEqual(
+                lock_path.read_text(encoding="utf-8"),
+                "existing lock metadata\n",
+            )
+
+    def test_sync_lock_rejects_symlink_without_touching_target(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / "kb.db"
+            lock_path = Path(f"{db_path.resolve()}.sync.lock")
+            sentinel = Path(directory) / "sentinel.txt"
+            sentinel.write_text("must remain intact\n", encoding="utf-8")
+            lock_path.symlink_to(sentinel)
+
+            with self.assertRaises(SyncLockUnavailable):
+                with _sync_lock(db_path):
+                    self.fail("symlink lock was accepted")
+
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "must remain intact\n")
+
+    def test_sync_lock_rejects_directory_and_hard_link(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / "kb.db"
+            lock_path = Path(f"{db_path.resolve()}.sync.lock")
+            lock_path.mkdir()
+            with self.assertRaises(SyncLockUnavailable):
+                with _sync_lock(db_path):
+                    self.fail("directory lock was accepted")
+            lock_path.rmdir()
+
+            if hasattr(os, "mkfifo"):
+                os.mkfifo(lock_path)
+                with self.assertRaises(SyncLockUnavailable):
+                    with _sync_lock(db_path):
+                        self.fail("fifo lock was accepted")
+                lock_path.unlink()
+
+            sentinel = Path(directory) / "hard-link-target.txt"
+            sentinel.write_text("must remain intact\n", encoding="utf-8")
+            os.link(sentinel, lock_path)
+            with self.assertRaises(SyncLockUnavailable):
+                with _sync_lock(db_path):
+                    self.fail("multiply-linked lock was accepted")
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "must remain intact\n")
+
+    def test_sync_lock_rejects_wrong_owner_and_missing_nofollow_support(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / "kb.db"
+            lock_path = Path(f"{db_path.resolve()}.sync.lock")
+            lock_path.write_text("must remain intact\n", encoding="utf-8")
+
+            with patch("orderdesk_kb.cli.os.geteuid", return_value=os.geteuid() + 1):
+                with self.assertRaises(SyncLockUnavailable):
+                    with _sync_lock(db_path):
+                        self.fail("wrong-owner lock was accepted")
+            with patch("orderdesk_kb.cli.os.O_NOFOLLOW", None):
+                with self.assertRaises(SyncLockUnavailable):
+                    with _sync_lock(db_path):
+                        self.fail("lock opened without nofollow support")
+            self.assertEqual(lock_path.read_text(encoding="utf-8"), "must remain intact\n")
+
+    def test_unsafe_lock_failure_is_content_free_and_precedes_sync(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / "kb.db"
+            lock_path = Path(f"{db_path.resolve()}.sync.lock")
+            sentinel = Path(directory) / "sensitive-sentinel-name.txt"
+            sentinel.write_text("must remain intact\n", encoding="utf-8")
+            lock_path.symlink_to(sentinel)
+            args = build_parser().parse_args(["--db", str(db_path), "--json", "sync"])
+            stderr = io.StringIO()
+
+            with patch("orderdesk_kb.cli.run_sync") as run_sync, redirect_stderr(stderr):
+                result = cmd_sync(args)
+
+            self.assertEqual(result, 2)
+            run_sync.assert_not_called()
+            self.assertEqual(
+                stderr.getvalue(),
+                "error: sync lock could not be acquired safely; sync did not start\n",
+            )
+            self.assertNotIn(sentinel.name, stderr.getvalue())
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "must remain intact\n")
+
+
+class GlobalRequestDelayTests(unittest.TestCase):
+    class Response:
+        def __init__(self, body):
+            self.body = body.encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return self.body
+
+    def test_one_limiter_spaces_sitemap_children_and_page_fetches(self):
+        clock = [0.0]
+        sleep_calls = [0]
+        starts = []
+        payloads = {
+            sitemap_mod.SITEMAP_INDEX: (
+                "<sitemapindex>"
+                "<sitemap><loc>https://kb.test/child-a.xml</loc></sitemap>"
+                "<sitemap><loc>https://kb.test/child-b.xml</loc></sitemap>"
+                "</sitemapindex>"
+            ),
+            "https://kb.test/child-a.xml": (
+                "<urlset><url><loc>https://kb.test/page-a</loc>"
+                "<lastmod>2026-07-20</lastmod></url></urlset>"
+            ),
+            "https://kb.test/child-b.xml": (
+                "<urlset><url><loc>https://kb.test/page-b</loc>"
+                "<lastmod>2026-07-20</lastmod></url></urlset>"
+            ),
+        }
+
+        def monotonic():
+            return clock[0]
+
+        def sleep(seconds):
+            sleep_calls[0] += 1
+            clock[0] += seconds + (0.75 if sleep_calls[0] == 1 else 0.0)
+
+        def urlopen(request, timeout):
+            del timeout
+            starts.append((request.full_url, clock[0]))
+            return self.Response(payloads[request.full_url])
+
+        def extract_page(url):
+            starts.append((url, clock[0]))
+            return Page(url=url, title=url.rsplit("/", 1)[-1], published="", word_count=0, sections=[])
+
+        connection = index_mod.connect(":memory:")
+        self.addCleanup(connection.close)
+        with patch("orderdesk_kb.sitemap.urllib.request.urlopen", side_effect=urlopen), \
+             patch("orderdesk_kb.sync.extract_page", side_effect=extract_page), \
+             patch("orderdesk_kb.sync.time.monotonic", side_effect=monotonic), \
+             patch("orderdesk_kb.sync.time.sleep", side_effect=sleep):
+            sync_mod.sync(connection, force=True, min_interval=2.0)
+
+        self.assertEqual(
+            [url for url, _ in starts],
+            [
+                sitemap_mod.SITEMAP_INDEX,
+                "https://kb.test/child-a.xml",
+                "https://kb.test/child-b.xml",
+                "https://kb.test/page-a",
+                "https://kb.test/page-b",
+            ],
+        )
+        self.assertTrue(
+            all(
+                later - earlier >= 2.0
+                for (_, earlier), (_, later) in zip(starts, starts[1:])
+            ),
+            starts,
+        )
 
 
 class MissingLockBackendTests(unittest.TestCase):
