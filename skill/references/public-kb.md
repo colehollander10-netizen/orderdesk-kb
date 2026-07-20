@@ -76,7 +76,9 @@ customer-facing copy.
   `freshness_note` explains that `fetched_at` is cache acquisition, not proof
   that the live page is unchanged.
 
-Run scripts/contract_smoke.py when these shapes or commands appear to drift.
+Run `scripts/contract_smoke.py` for the portable tracked-skill contract. Add
+`--local` only when explicitly checking this machine's runtime symlinks,
+generated KB health, and helper query shapes.
 
 ## Maintain cautiously
 

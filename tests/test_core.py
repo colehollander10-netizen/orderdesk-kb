@@ -9,6 +9,12 @@ Run: python3 -m pytest tests/  (or python3 -m unittest discover tests)
 
 import unittest
 import io
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
 from contextlib import nullcontext
 from contextlib import redirect_stdout
 from unittest.mock import Mock, patch
@@ -20,8 +26,10 @@ from orderdesk_kb.cli import (
     _confidence,
     _source_kind,
     _triage_payload,
+    _sync_lock,
     build_parser,
     cmd_sync,
+    SyncAlreadyRunning,
 )
 from orderdesk_kb.index import Hit
 
@@ -117,6 +125,51 @@ class SyncSafetyTests(unittest.TestCase):
         self.assertEqual(run_sync.call_args.kwargs["min_interval"], 2.0)
         conn.close.assert_called_once()
 
+    def test_sync_lock_contends_across_absolute_relative_and_symlink_aliases(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / "kb.db"
+            symlink_path = Path(directory) / "kb-alias.db"
+            symlink_path.symlink_to(db_path)
+            relative_path = Path(os.path.relpath(db_path, Path.cwd()))
+
+            with _sync_lock(db_path):
+                for alias in (relative_path, symlink_path):
+                    with self.subTest(alias=alias):
+                        with self.assertRaises(SyncAlreadyRunning):
+                            with _sync_lock(alias):
+                                self.fail("alias acquired an already-held sync lock")
+
+
+class MissingLockBackendTests(unittest.TestCase):
+    def run_without_fcntl(self, *arguments):
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            shim = Path(directory) / "fcntl.py"
+            shim.write_text("raise ImportError('fcntl unavailable for test')\n", encoding="utf-8")
+            db_path = Path(directory) / "portable.db"
+            env = os.environ.copy()
+            env["PYTHONPATH"] = os.pathsep.join((directory, str(root)))
+            return subprocess.run(
+                [sys.executable, "-m", "orderdesk_kb", "--db", str(db_path), *arguments],
+                cwd=root,
+                env=env,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+    def test_non_sync_command_runs_without_fcntl(self):
+        completed = self.run_without_fcntl("--json", "stats")
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(json.loads(completed.stdout)["pages"], 0)
+
+    def test_sync_fails_closed_without_supported_lock_backend(self):
+        completed = self.run_without_fcntl("--json", "sync")
+
+        self.assertEqual(completed.returncode, 2, completed.stderr)
+        self.assertIn("sync locking is unavailable", completed.stderr)
+
 
 class TriageTests(unittest.TestCase):
     def test_source_kind_labels_common_doc_areas(self):
@@ -205,6 +258,7 @@ class LexicalSearchTests(unittest.TestCase):
 
     def setUp(self):
         self.conn = index_mod.connect(":memory:")
+        self.addCleanup(self.conn.close)
         index_mod.init_schema(self.conn)
         index_mod.upsert_page(
             self.conn,

@@ -21,11 +21,15 @@ search runs entirely against the local kb.db.
 from __future__ import annotations
 
 import argparse
-import fcntl
 import json
 import sys
 from contextlib import contextmanager
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - exercised through a subprocess test
+    fcntl = None
 
 from . import embed as embed_mod
 from . import index as index_mod
@@ -70,6 +74,10 @@ class SyncAlreadyRunning(RuntimeError):
     pass
 
 
+class SyncLockUnavailable(RuntimeError):
+    pass
+
+
 def _db_path(args) -> Path:
     return Path(args.db) if args.db else DEFAULT_DB_PATH
 
@@ -90,11 +98,16 @@ def _positive_float(value: str) -> float:
 
 @contextmanager
 def _sync_lock(db_path: Path):
-    lock_path = (
-        DEFAULT_DB_PATH.with_suffix(".sync.lock")
+    if fcntl is None:
+        raise SyncLockUnavailable(
+            "sync locking is unavailable on this platform; sync did not start"
+        )
+    canonical_db = (
+        DEFAULT_DB_PATH.resolve(strict=False)
         if str(db_path) == ":memory:"
-        else Path(f"{db_path}.sync.lock")
+        else Path(db_path).expanduser().resolve(strict=False)
     )
+    lock_path = Path(f"{canonical_db}.sync.lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("w") as handle:
         try:
@@ -217,7 +230,7 @@ def cmd_sync(args) -> int:
                 }
             finally:
                 conn.close()
-    except SyncAlreadyRunning as exc:
+    except (SyncAlreadyRunning, SyncLockUnavailable) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     if args.json:

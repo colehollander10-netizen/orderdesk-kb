@@ -1,6 +1,8 @@
 import argparse
 import json
+import sqlite3
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -29,11 +31,61 @@ class PublicKbInputTests(unittest.TestCase):
     def test_builds_argv_without_shell_interpolation(self):
         args = argparse.Namespace(command="search", limit=8, mode="auto")
         query = f'"quoted" {chr(96)}whoami{chr(96)} $(id)'
-        with patch.object(public_kb, "resolve_binary", return_value=Path("/tmp/orderdesk-kb")):
+        with patch.object(public_kb, "resolve_binary", return_value=Path("/tmp/orderdesk-kb")), \
+             patch.object(public_kb, "resolve_db", return_value=Path("/tmp/alternate.db")):
             argv = public_kb.build_argv(args, query)
         self.assertEqual(argv[-1], query)
         self.assertEqual(argv.count(query), 1)
         self.assertIn("--limit", argv)
+        self.assertEqual(
+            argv,
+            [
+                "/tmp/orderdesk-kb",
+                "--db",
+                "/tmp/alternate.db",
+                "--json",
+                "search",
+                "--limit",
+                "8",
+                "--mode",
+                "auto",
+                query,
+            ],
+        )
+
+    def test_env_database_is_shared_by_health_and_query_argv(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / "alternate.db"
+            connection = sqlite3.connect(db_path)
+            try:
+                connection.executescript(
+                    """
+                    CREATE TABLE pages (synced_at TEXT);
+                    CREATE TABLE sections (body TEXT);
+                    CREATE TABLE embeddings (vector BLOB);
+                    INSERT INTO pages VALUES ('2026-07-20T00:00:00Z');
+                    INSERT INTO sections VALUES ('safe public text');
+                    """
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            args = argparse.Namespace(command="ask", limit=8, mode="lexical")
+            with patch.dict("os.environ", {"ORDERDESK_KB_DB": str(db_path)}), \
+                 patch.object(
+                     public_kb, "resolve_binary", return_value=Path("/repo/bin/orderdesk-kb")
+                 ):
+                health = public_kb.health_payload()
+                argv = public_kb.build_argv(args, "How do folders work?")
+
+            resolved = str(db_path.resolve())
+            self.assertEqual(health["db"], resolved)
+            self.assertEqual(argv[1:3], ["--db", resolved])
+
+    def test_prefers_canonical_repo_launcher_over_path_binary(self):
+        with patch.object(public_kb.shutil, "which", return_value="/usr/local/bin/orderdesk-kb"):
+            self.assertEqual(public_kb.resolve_binary(), public_kb.FALLBACK_BIN.resolve())
 
 
 if __name__ == "__main__":

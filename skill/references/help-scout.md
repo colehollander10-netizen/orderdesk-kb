@@ -40,7 +40,13 @@ Prefer:
   not return bodies.
 
 Do not read saved replies by default. Connector discovery is insufficient;
-verify authenticated reachability with helpscout_status.
+verify authenticated reachability with helpscout_status. Its response must
+advertise the exact capability `helpscout.support-context.typed-facts.v1`
+before calling `helpscout_get_support_context`. If the capability is absent or
+differs in any way, treat that as a technical blocker and stop before any
+support-context read. Do not substitute a body-returning tool. This is expected
+to fail closed when the skill is installed before the compatible bridge
+version.
 
 The MCP workflow has no automatic CLI body fallback. The CLI commands below
 are operator-only local diagnostics. For search, an operator starts the command

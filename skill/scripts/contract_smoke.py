@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Offline/current-local contract checks for the canonical Order Desk skill."""
+"""Portable skill checks with explicit opt-in local/integration probes."""
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import subprocess
@@ -10,8 +11,8 @@ import sys
 from pathlib import Path
 
 SKILL = Path(__file__).resolve().parents[1]
-ROOT = SKILL.parent
 PUBLIC = SKILL / "scripts" / "public_kb.py"
+HELP_SCOUT_MANIFEST = SKILL / "contracts" / "help-scout.json"
 
 
 def require(condition: bool, message: str) -> None:
@@ -86,6 +87,14 @@ def check_help_scout_contract() -> None:
     help_scout_text = " ".join(
         (SKILL / "references" / "help-scout.md").read_text().split()
     )
+    capability = "helpscout.support-context.typed-facts.v1"
+    for label, text in (("skill", skill_text), ("reference", help_scout_text)):
+        require(capability in text, f"Help Scout capability missing from {label}")
+        require(
+            "before calling `helpscout_get_support_context`" in text,
+            f"Help Scout capability order missing from {label}",
+        )
+        require("technical blocker" in text, f"Help Scout blocker missing from {label}")
 
     fact_only_contract = (
         "fact-only",
@@ -229,6 +238,63 @@ def check_multisource_reporting_contract() -> None:
     )
 
 
+def check_manifest_contract() -> dict:
+    manifest = json.loads(HELP_SCOUT_MANIFEST.read_text(encoding="utf-8"))
+    require(manifest.get("schemaVersion") == 1, "Help Scout manifest schema mismatch")
+    require(
+        manifest.get("requiredCapability")
+        == "helpscout.support-context.typed-facts.v1",
+        "Help Scout manifest capability mismatch",
+    )
+    require(
+        manifest.get("requiredOutputMode") == "typed-facts",
+        "Help Scout manifest output mode mismatch",
+    )
+    require(
+        manifest.get("requiredSafety")
+        == {
+            "rawProseModelVisible": False,
+            "internalNotesUsedAsEvidence": False,
+            "attachmentsAccessed": False,
+            "failClosed": True,
+        },
+        "Help Scout manifest safety contract is not closed",
+    )
+    return manifest
+
+
+def check_help_scout_integration(root: Path, manifest: dict) -> None:
+    executable = root.expanduser().resolve() / "bin" / "help-scout-mcp.js"
+    require(executable.is_file(), f"Help Scout contract CLI missing: {executable}")
+    completed = subprocess.run(
+        [str(executable), "contract"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    require(
+        completed.returncode == 0,
+        completed.stderr.strip() or "Help Scout contract command failed",
+    )
+    actual = json.loads(completed.stdout)
+    require(
+        actual.get("schemaVersion") == manifest["schemaVersion"],
+        "Help Scout schema version mismatch",
+    )
+    require(
+        actual.get("capability") == manifest["requiredCapability"],
+        "Help Scout capability mismatch",
+    )
+    require(
+        actual.get("outputMode") == manifest["requiredOutputMode"],
+        "Help Scout output mode mismatch",
+    )
+    require(
+        actual.get("safety") == manifest["requiredSafety"],
+        "Help Scout safety contract mismatch",
+    )
+
+
 def check_local_contracts() -> dict:
     health = run_public("health")
     require(health["pages"] > 0 and health["sections"] > 0, "KB index is empty")
@@ -257,125 +323,39 @@ def check_local_contracts() -> dict:
             "triage source date contract drift",
         )
 
-    help_scout = ROOT.parent / "help-scout-mcp" / "bin" / "help-scout-mcp.js"
-    completed = subprocess.run(
-        [str(help_scout), "--help"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    require(completed.returncode == 0, "Help Scout CLI help failed")
-    require("--query-stdin" in completed.stdout, "Help Scout stdin query support missing")
-    require("--include-body" in completed.stdout, "Help Scout body opt-in missing")
-    require("--ticket-number" in completed.stdout, "number-first CLI lookup missing")
-    cli_source = help_scout.read_text()
-    for required in (
-        "requirePrivateBodyReadOptIn(parseBoolArg(\"--include-body\"))",
-        "getThreadsByTicketNumber",
-    ):
-        require(required in cli_source, f"Help Scout operator diagnostic contract missing: {required}")
-    mcp_source = (help_scout.parents[1] / "lib" / "mcp.js").read_text()
-    for required in (
-        "helpscout_get_support_context",
-        "targetTicketNumber",
-        "historySelectionHandle: historySelections.issue(conversation.number)",
-        "historicalSelectionHandles",
-        "SUPPORT_HISTORY_SELECTION_TTL_MS = 5 * 60 * 1000",
-        "historicalTicketNumbers is not accepted; use Stage 0 history selection handles",
-        "selectionReservation = historySelections?.reserve?.(",
-        "selectionReservation?.commit()",
-        "selectionReservation?.release?.()",
-        "const readResults = await Promise.allSettled([",
-        "MCP support context is fact-only",
-        'bodyOutput: "typed facts only"',
-        'internalNoteBodies: "not used as evidence"',
-        'attachments: "not accessed"',
-        "Customer/staff message bodies may be inspected locally to derive typed facts but are never returned or model-visible",
-        "support_context_blocked",
-        "supportContextAuditMeta",
-        "sanitizeForModel(result)",
-        "genericFailedToolResult()",
-    ):
-        require(required in mcp_source, f"Help Scout fact-only MCP contract missing: {required}")
-    reserve_match = re.search(
-        r"function reserve\(handles\) \{(?P<body>.*?)\n\s{2}\}\n\n\s{2}return Object\.freeze",
-        mcp_source,
-        flags=re.DOTALL,
-    )
-    require(reserve_match is not None, "Help Scout selection reservation missing")
-    require(
-        "entries.delete(handle)" in reserve_match.group("body")
-        and "delete selection.reservation" in reserve_match.group("body"),
-        "Help Scout history handles do not support commit and release",
-    )
-    reserve_position = mcp_source.find("selectionReservation = historySelections?.reserve?.(")
-    read_position = mcp_source.find("const readResults = await Promise.allSettled([", reserve_position)
-    commit_position = mcp_source.find("selectionReservation?.commit()", read_position)
-    release_position = mcp_source.find("selectionReservation?.release?.()", commit_position)
-    require(
-        0 <= reserve_position < read_position < commit_position < release_position,
-        "Help Scout history handles do not reserve before reads, commit after success, and release on failure",
-    )
-    fact_schema_source = (
-        help_scout.parents[1] / "lib" / "support-fact-schema.js"
-    ).read_text()
-    for required in (
-        'contextState: routeReady ? "full" : "partial"',
-        'contextState: "blocked"',
-        "routeReady: false",
-        "safeFactsExtracted",
-        "missingEvidence",
-        "ruleIds",
-        "candidate.safeFactsExtracted >= 3",
-        '"no_safe_body_facts"',
-    ):
-        require(required in fact_schema_source, f"Help Scout fact schema missing: {required}")
-    extractor_source = (
-        help_scout.parents[1] / "lib" / "support-fact-extractor.js"
-    ).read_text()
-    for required in (
-        'thread?.type === "note"',
-        "stripPrivateBodyStructure(thread?.body",
-        'missingEvidence.push("no_safe_body_facts")',
-    ):
-        require(required in extractor_source, f"Help Scout fact extractor missing: {required}")
-    audit_source = (help_scout.parents[1] / "lib" / "audit.js").read_text()
-    for required in (
-        'error.code = "audit_failed"',
-        'error: "support_context_blocked"',
-        "isSafeSupportFactRecord(fact)",
-        'full: facts.filter((fact) => fact.contextState === "full").length',
-        'partial: facts.filter((fact) => fact.contextState === "partial").length',
-        'blocked: facts.filter((fact) => fact.contextState === "blocked").length',
-    ):
-        require(required in audit_source, f"Help Scout policy/audit gate missing: {required}")
-    client_source = (help_scout.parents[1] / "lib" / "client.js").read_text()
-    for required in (
-        "DEFAULT_HELP_SCOUT_REQUEST_TIMEOUT_MS = 10_000",
-        "controller.abort()",
-        "this.clearTimeout(timer)",
-        'upstreamSignal?.removeEventListener("abort", cancel)',
-        '"helpscout_request_timeout"',
-    ):
-        require(required in client_source, f"Help Scout timeout contract missing: {required}")
-    cli_input_source = (help_scout.parents[1] / "lib" / "cli-input.js").read_text()
-    for required in (
-        "SEARCH_QUERY_MAX_LENGTH = 256",
-        "SEARCH_PAGE_MAX = 20",
-        "SEARCH_RESULT_LIMIT = 5",
-    ):
-        require(required in cli_input_source, f"Help Scout search contract missing: {required}")
     return health
 
 
-def main() -> int:
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser()
+    result.add_argument(
+        "--local",
+        action="store_true",
+        help="check machine-local runtime symlinks and the generated public KB",
+    )
+    result.add_argument(
+        "--help-scout-root",
+        type=Path,
+        help="invoke an installed Help Scout bridge's machine-readable contract",
+    )
+    return result
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parser().parse_args(argv)
     check_links()
-    check_runtimes()
     check_text_contract()
     check_help_scout_contract()
     check_multisource_reporting_contract()
-    health = check_local_contracts()
-    print(json.dumps({"ok": True, "skill": str(SKILL), "kb_health": health}, indent=2))
+    manifest = check_manifest_contract()
+    payload = {"ok": True, "skill": str(SKILL), "portable": True}
+    if args.local:
+        check_runtimes()
+        payload["kb_health"] = check_local_contracts()
+    if args.help_scout_root:
+        check_help_scout_integration(args.help_scout_root, manifest)
+        payload["help_scout_integration"] = True
+    print(json.dumps(payload, indent=2))
     return 0
 
 

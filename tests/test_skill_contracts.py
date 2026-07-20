@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import unittest
 
@@ -8,6 +9,7 @@ INTERNAL_BRIEF = ROOT / "skill" / "references" / "internal-brief.md"
 PUBLIC_KB = ROOT / "skill" / "references" / "public-kb.md"
 HELP_SCOUT = ROOT / "skill" / "references" / "help-scout.md"
 SKILL = ROOT / "skill" / "SKILL.md"
+HELP_SCOUT_MANIFEST = ROOT / "skill" / "contracts" / "help-scout.json"
 
 
 class MultiSourceBriefContractTests(unittest.TestCase):
@@ -110,6 +112,35 @@ class HelpScoutWorkflowContractTests(unittest.TestCase):
         self.assertIn("`historySelectionHandle`", reference)
         self.assertIn("`historicalSelectionHandles`", reference)
         self.assertIn("Expired, unissued, or reused", reference)
+
+    def test_help_scout_manifest_is_closed_and_versioned(self):
+        manifest = json.loads(HELP_SCOUT_MANIFEST.read_text(encoding="utf-8"))
+
+        self.assertEqual(manifest["schemaVersion"], 1)
+        self.assertEqual(
+            manifest["requiredCapability"],
+            "helpscout.support-context.typed-facts.v1",
+        )
+        self.assertEqual(manifest["requiredOutputMode"], "typed-facts")
+        self.assertEqual(
+            manifest["requiredSafety"],
+            {
+                "rawProseModelVisible": False,
+                "internalNotesUsedAsEvidence": False,
+                "attachmentsAccessed": False,
+                "failClosed": True,
+            },
+        )
+
+    def test_docs_require_exact_capability_before_support_context(self):
+        required = "helpscout.support-context.typed-facts.v1"
+        for document in (SKILL, HELP_SCOUT):
+            with self.subTest(document=document.name):
+                text = " ".join(document.read_text(encoding="utf-8").split())
+                self.assertIn(required, text)
+                self.assertIn("status", text)
+                self.assertIn("technical blocker", text)
+                self.assertIn("before calling `helpscout_get_support_context`", text)
 
 
 if __name__ == "__main__":

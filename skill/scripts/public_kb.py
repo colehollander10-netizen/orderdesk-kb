@@ -43,12 +43,14 @@ def resolve_binary() -> Path:
     configured = os.environ.get("ORDERDESK_KB_BIN")
     if configured:
         path = Path(configured).expanduser()
+    elif FALLBACK_BIN.is_file():
+        path = FALLBACK_BIN
     else:
         discovered = shutil.which("orderdesk-kb")
         path = Path(discovered) if discovered else FALLBACK_BIN
     if not path.is_file():
         raise FileNotFoundError(f"orderdesk-kb executable not found at {path}")
-    return path
+    return path.resolve()
 
 
 def resolve_db() -> Path:
@@ -56,11 +58,17 @@ def resolve_db() -> Path:
     path = Path(configured).expanduser() if configured else FALLBACK_DB
     if not path.is_file():
         raise FileNotFoundError(f"Order Desk KB database not found at {path}")
-    return path
+    return path.resolve()
 
 
 def build_argv(args: argparse.Namespace, query: str) -> list[str]:
-    argv = [str(resolve_binary()), "--json", args.command]
+    argv = [
+        str(resolve_binary()),
+        "--db",
+        str(resolve_db()),
+        "--json",
+        args.command,
+    ]
     if args.command in ("search", "triage"):
         argv.extend(["--limit", str(args.limit)])
     argv.extend(["--mode", args.mode, query])

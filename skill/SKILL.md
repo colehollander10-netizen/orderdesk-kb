@@ -107,6 +107,13 @@ answer or one safe route.
 
 ## 3. Prove capability, then read narrowly
 
+For Help Scout, `helpscout_status` must advertise the exact capability
+`helpscout.support-context.typed-facts.v1` before calling
+`helpscout_get_support_context`. An absent or mismatched capability is a
+technical blocker: do not attempt the support-context read or fall back to a
+body-returning tool. This gate keeps the skill safe when it is deployed before
+the required Help Scout bridge version.
+
 For each authorized private source:
 
 1. Verify that its read tool is callable and the required scope is configured.

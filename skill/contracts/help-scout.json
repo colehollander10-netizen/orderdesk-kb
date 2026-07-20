@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "requiredCapability": "helpscout.support-context.typed-facts.v1",
+  "requiredOutputMode": "typed-facts",
+  "requiredSafety": {
+    "rawProseModelVisible": false,
+    "internalNotesUsedAsEvidence": false,
+    "attachmentsAccessed": false,
+    "failClosed": true
+  }
+}
