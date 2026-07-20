@@ -1,0 +1,19 @@
+{
+  "scenario": "An invented export engine seals a document before delivery and cannot alter it afterward. A published, approved workaround tells support to apply a preparation step before rerunning the export.",
+  "expected_route": "support_answerable",
+  "observed_result": {
+    "route": "support_answerable",
+    "sources": [
+      {
+        "title": "Invented approved pre-export workaround",
+        "url": "https://example.invalid/approved-pre-export-workaround",
+        "useful": true
+      }
+    ],
+    "uncertainty": "Support must confirm that the invented workflow matches the documented frozen-engine constraint before recommending the workaround.",
+    "diagnosis": {
+      "confidence": "medium",
+      "supported_by_sources": true
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "scenario": "An invented workspace skips a normal processing step only when an advanced configuration flag is enabled. The flag state is not visible in the initial report.",
+  "expected_route": "store_configuration",
+  "observed_result": {
+    "route": "store_configuration",
+    "sources": [
+      {
+        "title": "Invented advanced flag reference",
+        "url": "https://example.invalid/advanced-flag-reference",
+        "useful": true
+      }
+    ],
+    "uncertainty": "The workspace owner must confirm the advanced flag state before the behavior can be attributed to configuration.",
+    "diagnosis": {
+      "confidence": "low",
+      "supported_by_sources": true
+    }
+  }
+}
