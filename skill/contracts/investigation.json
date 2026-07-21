@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "entrypoint": {"input": "positive_help_scout_ticket_number", "output": "internal_investigation_brief"},
+  "replyDrafting": "outside_skill",
+  "sources": {
+    "help_scout_target": {"requiredTool": "helpscout_get_support_context", "mandatory": true},
+    "public_kb": {"claimKinds": ["documented_behavior"], "requiredTool": "public_kb.py"},
+    "helpscout_history": {"claimKinds": ["prior_case_handling"], "requiredTool": "helpscout_get_support_context"},
+    "slack": {"claimKinds": ["recent_team_context"], "requiredTool": "slack_search"},
+    "notion": {"claimKinds": ["intended_process"], "requiredTool": "notion_search"},
+    "code_context": {"claimKinds": ["implementation_behavior"], "requiredTool": "code_context"},
+    "aws_logs": {"claimKinds": ["runtime_event"], "requiredTool": "aws_log_lookup", "capabilityGated": true}
+  },
+  "claimSourceRoutes": {"documented_behavior": ["public_kb"], "prior_case_handling": ["helpscout_history"], "recent_team_context": ["slack"], "intended_process": ["notion"], "implementation_behavior": ["code_context"], "runtime_event": ["aws_logs"]},
+  "routes": ["Support can answer", "Store configuration / Rule Builder", "Logs or runtime investigation", "Likely code change", "Manual admin action / product gap", "Insufficient evidence — abstain"],
+  "requiredBriefSections": ["Question / Scope", "Investigation Plan", "What I Checked", "Coverage and Freshness", "Route", "Source Ledger", "Evidence Status", "Likely Pattern", "Similar Tickets", "Conflicts", "Unknowns", "Public KB Links", "Suggested Next Step", "Reply Boundary"],
+  "stopErrors": ["support_context_blocked", "policy_denied", "scope_denied", "unsafe_query", "masking_failed", "audit_failed", "handle_integrity_failed", "credential_boundary_failed"],
+  "safety": {"governedToolsOnly": true, "rawPrivateContentModelVisible": false, "operationalIdentifiersModelVisible": false, "opaqueHandleTransitOnly": true, "opaqueHandlesFinalBriefVisible": false, "privateSourceSubagents": false, "writesAllowed": false, "genericLogBrowsingAllowed": false}
+}

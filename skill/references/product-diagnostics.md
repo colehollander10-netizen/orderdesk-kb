@@ -18,9 +18,9 @@ import.” First establish:
 Ask one focused question when the provider or flow is missing. Never let a
 high-similarity article silently choose the customer's platform.
 
-For a request that asks for cause or customer wording, treat any missing field
+For a request that asks for cause, treat any missing field
 above as an intake blocker when it could change the source plan. Do not query
-the KB, choose a route, or draft a reply merely to fill the silence with a list
+the KB or choose a route merely to fill the silence with a list
 of documented settings. Ask the single smallest question that separates the
 credible paths.
 

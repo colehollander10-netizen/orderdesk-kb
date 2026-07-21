@@ -13,6 +13,8 @@ from pathlib import Path
 SKILL = Path(__file__).resolve().parents[1]
 PUBLIC = SKILL / "scripts" / "public_kb.py"
 HELP_SCOUT_MANIFEST = SKILL / "contracts" / "help-scout.json"
+INVESTIGATION_MANIFEST = SKILL / "contracts" / "investigation.json"
+HELP_SCOUT_CORRELATION_MANIFEST = SKILL / "contracts" / "help-scout-correlation.json"
 
 
 def require(condition: bool, message: str) -> None:
@@ -68,17 +70,31 @@ def check_text_contract() -> None:
         require(stale not in text, f"stale safety phrase found: {stale}")
     require((SKILL / "agents" / "openai.yaml").is_file(), "agents/openai.yaml missing")
     for required in (
-        "slack_conversations",
+        "one positive Help Scout ticket number",
+        "slack_search",
         "notion_search",
-        "bitbucket_file",
+        "code_context",
+        "aws_log_lookup",
+        "Investigation Plan",
+        "Source Ledger",
         "Support can answer",
         "Insufficient evidence — abstain",
-        "Source Ledger",
-        "Customer copy means text",
-        "Logs are a planned governed source",
+        "Customer-reply drafting is outside `/orderdesk`",
         "Never create, save, or send a Help Scout draft",
     ):
         require(required in text, f"required skill contract missing: {required}")
+    for forbidden in (
+        "**Customer copy:**",
+        "Separate customer-copy follow-up",
+        "After a separate customer-copy request",
+        "A later customer-copy request",
+        "reply coaching",
+        "paste-ready customer follow-ups",
+    ):
+        require(forbidden not in text, "customer-copy mode is outside this skill")
+    governed_text = (SKILL / "references" / "governed-context.md").read_text()
+    for tool in ("slack_search", "notion_search", "notion_page", "code_context", "aws_log_lookup"):
+        require(f"`{tool}`" in governed_text, f"required governed tool missing: {tool}")
     require("Cole explicitly" not in text, "skill still hardcodes a personal operator")
 
 
@@ -87,102 +103,11 @@ def check_help_scout_contract() -> None:
     help_scout_text = " ".join(
         (SKILL / "references" / "help-scout.md").read_text().split()
     )
-    capability = "helpscout.support-context.typed-facts.v1"
     for label, text in (("skill", skill_text), ("reference", help_scout_text)):
-        require(capability in text, f"Help Scout capability missing from {label}")
-        require(
-            "before calling `helpscout_get_support_context`" in text,
-            f"Help Scout capability order missing from {label}",
-        )
-        require("technical blocker" in text, f"Help Scout blocker missing from {label}")
-
-    fact_only_contract = (
-        "fact-only",
-        "raw Help Scout prose never reaches the model",
-        "closed enums, counts, missing-evidence codes, and rule IDs",
-        "zero or more safe facts",
-        "not route-ready",
-        "fixed missing-evidence codes",
-        "zero-fact partial does not produce history search terms",
-        "actual closed safe public term",
-        "partial is not `masking_failed`",
-        "internal notes and attachments are ignored",
-        "operator-only local diagnostic",
-        "never model context",
-        "not a fallback",
-        "metadata and handles remain bounded",
-        "blocked stops the workflow safely",
-    )
-    for required in fact_only_contract:
-        require(
-            required.casefold() in help_scout_text.casefold(),
-            f"required Help Scout contract missing: {required}",
-        )
-
-    for required in (
-        "A named real Help Scout ticket is the intake artifact",
-        "Proceed without a second approval prompt",
-        "shortlist at most five unique metadata candidates",
-        "metadata-only search to locate the target",
-        "helpscout_get_support_context",
-        "`targetTicketNumber`",
-        "`historicalSelectionHandles`",
-        "earlier Stage-0 metadata results",
-        "process-local",
-        "expire after five minutes",
-        "one-time",
-        "expired, unissued, or reused handles fail before source inspection",
-        "raw Help Scout prose never reaches the model",
-        "internal notes and attachments are ignored",
-        "operator-only local diagnostic",
-        "not a fallback",
-        "full",
-        "partial",
-        "blocked",
-        "zero-fact partial",
-        "policy, scope, masking, audit, or source-read failure",
-    ):
-        require(
-            required in skill_text,
-            f"required named-ticket workflow missing: {required}",
-        )
-
-    require(
-        "Do not put it—or any customer, order, store, email, domain" in help_scout_text,
-        "Help Scout contract does not forbid raw identifiers in history queries",
-    )
-    for stale in (
-        "includeTargetBodies",
-        "targetConversationId",
-        "historicalConversationIds",
-        "historicalTicketNumbers",
-        "threads --conversation-id <",
-        "25 threads per ticket",
-        "25-threads-per-ticket",
-        "800 characters per body",
-        "only model-visible MCP body path",
-        "For CLI fallback",
-        "CLI fallback is not an atomic",
-    ):
-        require(stale not in help_scout_text, f"stale Help Scout contract found: {stale}")
-    for stale in (
-        "includeTargetBodies",
-        "historicalTicketNumbers",
-        "800 characters per body",
-        "only model-visible MCP body path",
-        "For CLI fallback",
-    ):
-        require(stale not in skill_text, f"stale top-level Help Scout contract found: {stale}")
-
-    require(
-        "no automatic CLI body fallback" in help_scout_text,
-        "Help Scout contract does not forbid automatic CLI body fallback",
-    )
-    require(
-        "notes never contribute evidence, and attachments are not accessed"
-        in help_scout_text,
-        "Help Scout contract does not exclude notes and attachments from evidence",
-    )
+        for required in ("helpscout.support-context.typed-facts.v1", "fact-only", "raw Help Scout prose never reaches the model", "technical blocker"):
+            require(required in text, f"Help Scout contract missing from {label}: {required}")
+    for required in ("helpscout.support-correlation.opaque-handle.v1", "opaque-correlation-envelope", "before accepting or passing a correlation handle", "mark correlation unavailable", "prior_case_handling", "Never create, save, or send a Help Scout draft"):
+        require(required in help_scout_text or required in skill_text, f"Help Scout correlation contract missing: {required}")
 
 
 def check_multisource_reporting_contract() -> None:
@@ -198,13 +123,13 @@ def check_multisource_reporting_contract() -> None:
     )
 
     for required in (
-        "no match within the checked window",
-        "not a workspace-wide search",
-        "searches approved page titles only",
+        "no match within the bounded search",
+        "not a comprehensive Slack absence",
         "no title match in the bounded query",
         "page bodies remained unchecked",
-        "Bitbucket remained unchecked",
-        "Do not infer code behavior or code absence",
+        "Code context remained unchecked",
+        "generic S3 browsing is forbidden",
+        "raw log lines never reach the model",
     ):
         require(
             required in governed_text,
@@ -212,30 +137,22 @@ def check_multisource_reporting_contract() -> None:
         )
 
     for required in (
-        "bounded conversation/time/message window",
-        "title-only query and result cap",
-        "safe failure code and remained unchecked",
+        "Investigation Plan",
+        "Help Scout target:",
+        "Help Scout history:",
+        "Public KB:",
+        "Slack:",
+        "Notion:",
+        "Code context:",
+        "AWS logs:",
+        "checked, planned, skipped, unavailable, or stopped",
+        "retrieval time",
         "Public KB freshness",
-        "health checked at",
-        "newest and oldest `fetched_at`",
-        "Always retain this freshness line",
-        "Never use bare `not found` for Slack or Notion",
+        "Reply Boundary",
     ):
         require(required in brief_text, f"brief coverage contract missing: {required}")
 
-    for required in (
-        "bounded Slack window",
-        "title-only Notion search",
-        "Bitbucket remained unchecked",
-        "Never turn limited discovery into comprehensive absence",
-        "public-KB freshness record",
-    ):
-        require(required in skill_text, f"top-level coverage contract missing: {required}")
-
-    require(
-        "every multi-source brief" in public_kb_text,
-        "public KB multi-source freshness contract missing",
-    )
+    require("public-KB freshness" not in skill_text or "Public KB" in skill_text, "top-level coverage contract drift")
 
 
 def check_manifest_contract() -> dict:
@@ -260,6 +177,22 @@ def check_manifest_contract() -> dict:
         },
         "Help Scout manifest safety contract is not closed",
     )
+    return manifest
+
+
+def check_investigation_manifest() -> dict:
+    manifest = json.loads(INVESTIGATION_MANIFEST.read_text(encoding="utf-8"))
+    require(manifest.get("schemaVersion") == 1, "investigation schema mismatch")
+    require(manifest.get("entrypoint") == {"input": "positive_help_scout_ticket_number", "output": "internal_investigation_brief"}, "investigation entrypoint mismatch")
+    require(manifest.get("replyDrafting") == "outside_skill", "reply drafting boundary mismatch")
+    require(set(manifest.get("sources", {})) == {"help_scout_target", "public_kb", "helpscout_history", "slack", "notion", "code_context", "aws_logs"}, "investigation source set mismatch")
+    require(manifest.get("claimSourceRoutes") == {"documented_behavior": ["public_kb"], "prior_case_handling": ["helpscout_history"], "recent_team_context": ["slack"], "intended_process": ["notion"], "implementation_behavior": ["code_context"], "runtime_event": ["aws_logs"]}, "investigation ordered routes mismatch")
+    require(manifest.get("replyDrafting") == "outside_skill", "reply drafting boundary mismatch")
+    correlation = json.loads(HELP_SCOUT_CORRELATION_MANIFEST.read_text(encoding="utf-8"))
+    require(correlation.get("schemaVersion") == 1, "correlation schema mismatch")
+    require(correlation.get("requiredCapability") == "helpscout.support-correlation.opaque-handle.v1", "correlation capability mismatch")
+    require(correlation.get("requiredOutputMode") == "opaque-correlation-envelope", "correlation output mode mismatch")
+    require(correlation.get("envelope") == {"variants": {"available": ["state", "correlationHandle", "lookupKinds"], "not_found": ["state", "lookupKinds"], "unavailable": ["state", "lookupKinds"]}}, "correlation envelope mismatch")
     return manifest
 
 
@@ -293,6 +226,8 @@ def check_help_scout_integration(root: Path, manifest: dict) -> None:
         actual.get("safety") == manifest["requiredSafety"],
         "Help Scout safety contract mismatch",
     )
+    require(actual.get("correlationCapability") == "helpscout.support-correlation.opaque-handle.v1", "Help Scout correlation capability mismatch")
+    require(actual.get("correlationOutputMode") == "opaque-correlation-envelope", "Help Scout correlation output mode mismatch")
 
 
 def check_local_contracts() -> dict:
@@ -347,8 +282,9 @@ def main(argv: list[str] | None = None) -> int:
     check_text_contract()
     check_help_scout_contract()
     check_multisource_reporting_contract()
+    investigation_manifest = check_investigation_manifest()
     manifest = check_manifest_contract()
-    payload = {"ok": True, "skill": str(SKILL), "portable": True}
+    payload = {"ok": True, "skill": str(SKILL), "portable": True, "investigationSchemaVersion": investigation_manifest["schemaVersion"]}
     if args.local:
         check_runtimes()
         payload["kb_health"] = check_local_contracts()

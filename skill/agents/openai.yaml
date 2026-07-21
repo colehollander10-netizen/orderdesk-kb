@@ -1,4 +1,4 @@
 interface:
   display_name: "Order Desk Support"
-  short_description: "Source-backed support research and routing"
-  default_prompt: "Use $orderdesk to investigate this Order Desk support question with the least-private sufficient evidence and return a source-backed answer or safe route."
+  short_description: "Governed ticket investigation and routing"
+  default_prompt: "Use /orderdesk <positive Help Scout ticket number> to run the smallest sufficient governed read-only investigation and return an internal investigation brief."

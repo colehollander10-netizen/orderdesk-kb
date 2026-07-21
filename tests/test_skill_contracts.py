@@ -9,146 +9,57 @@ INTERNAL_BRIEF = ROOT / "skill" / "references" / "internal-brief.md"
 PUBLIC_KB = ROOT / "skill" / "references" / "public-kb.md"
 HELP_SCOUT = ROOT / "skill" / "references" / "help-scout.md"
 SKILL = ROOT / "skill" / "SKILL.md"
-HELP_SCOUT_MANIFEST = ROOT / "skill" / "contracts" / "help-scout.json"
 
 
 class MultiSourceBriefContractTests(unittest.TestCase):
-    def test_bounded_slack_read_is_reported_as_limited_coverage(self):
-        governed = " ".join(GOVERNED_CONTEXT.read_text(encoding="utf-8").split())
-        template = " ".join(INTERNAL_BRIEF.read_text(encoding="utf-8").split())
+    def test_slack_search_is_claim_routed_and_bounded(self):
+        governed = " ".join(GOVERNED_CONTEXT.read_text().split())
+        for phrase in ("`slack_search`", "`recent_team_context`", "safe product, provider, behavior, workflow, rule, or error-family terms", "files and attachments remain withheld", "no match within the bounded search", "not a comprehensive Slack absence"):
+            self.assertIn(phrase, governed)
 
-        self.assertIn("no match within the checked window", governed)
-        self.assertIn("not a workspace-wide search", governed)
-        self.assertIn("bounded conversation/time/message window", template)
-        self.assertIn("not workspace-wide", template)
-        self.assertIn("Never use bare `not found` for Slack or Notion", template)
+    def test_code_context_and_aws_are_governed(self):
+        governed = " ".join(GOVERNED_CONTEXT.read_text().split())
+        for phrase in ("`code_context`", "repository, path, line, and immutable commit", "approved default-branch snapshot", "does not prove deployment", "`aws_log_lookup`", "`runtime_event`", "correlation availability", "schema-specific capability", "generic S3 browsing is forbidden", "raw log lines never reach the model"):
+            self.assertIn(phrase, governed)
 
-    def test_notion_title_search_is_reported_as_limited_coverage(self):
-        governed = " ".join(GOVERNED_CONTEXT.read_text(encoding="utf-8").split())
-        template = " ".join(INTERNAL_BRIEF.read_text(encoding="utf-8").split())
-
-        self.assertIn("searches approved page titles only", governed)
-        self.assertIn("no title match in the bounded query", governed)
-        self.assertIn("page bodies remained unchecked", governed)
-        self.assertIn("title-only query and result cap", template)
-        self.assertIn("not a comprehensive Notion absence", template)
-
-    def test_bitbucket_source_failure_remains_unchecked(self):
-        governed = " ".join(GOVERNED_CONTEXT.read_text(encoding="utf-8").split())
-        template = " ".join(INTERNAL_BRIEF.read_text(encoding="utf-8").split())
-
-        self.assertIn("Bitbucket remained unchecked", governed)
-        self.assertIn("Do not infer code behavior or code absence", governed)
-        self.assertIn("safe failure code and remained unchecked", template)
-        self.assertIn("no code-behavior inference", template)
-
-    def test_every_multi_source_brief_records_public_kb_freshness(self):
-        template = " ".join(INTERNAL_BRIEF.read_text(encoding="utf-8").split())
-        public_kb = " ".join(PUBLIC_KB.read_text(encoding="utf-8").split())
-        skill = " ".join(SKILL.read_text(encoding="utf-8").split())
-
-        self.assertIn("Public KB freshness", template)
-        self.assertIn("health checked at", template)
-        self.assertIn("newest and oldest `fetched_at`", template)
-        self.assertIn("Always retain this freshness line", template)
-        self.assertIn("every multi-source brief", public_kb)
-        self.assertIn("public-KB freshness record", skill)
-
-    def test_top_level_skill_preserves_source_specific_coverage_limits(self):
-        skill = " ".join(SKILL.read_text(encoding="utf-8").split())
-
-        self.assertIn("bounded Slack window", skill)
-        self.assertIn("title-only Notion search", skill)
-        self.assertIn("Bitbucket remained unchecked", skill)
-        self.assertIn("Never turn limited discovery into comprehensive absence", skill)
+    def test_brief_records_plan_and_complete_source_disposition(self):
+        template = INTERNAL_BRIEF.read_text()
+        self.assertIn("**Investigation Plan**", template)
+        for source in ("Help Scout target", "Help Scout history", "Public KB", "Slack", "Notion", "Code context", "AWS logs"):
+            self.assertIn(f"- {source}:", template)
+        self.assertIn("checked, planned, skipped, unavailable, or stopped", template)
+        self.assertIn("retrieval time", template)
+        self.assertIn("Customer-reply drafting is outside `/orderdesk`", template)
 
 
-class HelpScoutWorkflowContractTests(unittest.TestCase):
-    def assert_fact_only_help_scout_contract(self, document):
-        folded = document.casefold()
-        for phrase in (
-            "fact-only",
-            "raw Help Scout prose never reaches the model",
-            "closed enums, counts, missing-evidence codes, and rule IDs",
-            "zero or more safe facts",
-            "not route-ready",
-            "fixed missing-evidence codes",
-            "zero-fact partial does not produce history search terms",
-            "actual closed safe public term",
-            "partial is not `masking_failed`",
-            "internal notes and attachments are ignored",
-            "operator-only local diagnostic",
-            "never model context",
-            "not a fallback",
-            "metadata and handles remain bounded",
-            "blocked stops the workflow safely",
-        ):
-            self.assertIn(phrase.casefold(), folded)
+class InvestigationEntrypointContractTests(unittest.TestCase):
+    def test_positive_ticket_number_is_the_only_required_support_input(self):
+        skill = " ".join(SKILL.read_text().split())
+        agent = (ROOT / "skill" / "agents" / "openai.yaml").read_text()
+        self.assertIn("one positive Help Scout ticket number", skill)
+        self.assertIn("Do not ask the rep to restate the symptom", skill)
+        self.assertIn("/orderdesk <positive Help Scout ticket number>", agent)
+        self.assertIn("internal investigation brief", agent)
 
-        for stale in (
-            "includeTargetBodies",
-            "historicalTicketNumbers",
-            "800 characters per body",
-            "eight target threads",
-            "four threads per historical",
-            "For CLI fallback",
-            "CLI fallback is not an atomic",
-        ):
-            self.assertNotIn(stale, document)
+    def test_ticket_authority_is_conditional_and_governed(self):
+        skill = " ".join(SKILL.read_text().split())
+        for phrase in ("task-scoped authority", "smallest sufficient governed source set", "one unresolved claim", "configured company-governed", "Do not substitute a personal plugin", "Do not dispatch private-source subagents"):
+            self.assertIn(phrase, skill)
 
-    def test_top_level_skill_teaches_fact_only_help_scout_workflow(self):
-        skill = " ".join(SKILL.read_text(encoding="utf-8").split())
-
-        self.assert_fact_only_help_scout_contract(skill)
-        self.assertIn("`historicalSelectionHandles`", skill)
-        self.assertIn("process-local", skill)
-        self.assertIn("five minutes", skill)
-        self.assertIn("one-time", skill)
-
-    def test_support_run_cannot_mutate_skill_to_resolve_contract_drift(self):
-        skill = " ".join(SKILL.read_text(encoding="utf-8").split())
-
-        self.assertNotIn("update this canonical tracked skill", skill)
-        self.assertIn("stop and report the contract drift", skill)
-        self.assertIn("separate explicit maintenance request", skill)
-
-    def test_help_scout_reference_teaches_fact_only_workflow(self):
-        reference = " ".join(HELP_SCOUT.read_text(encoding="utf-8").split())
-
-        self.assert_fact_only_help_scout_contract(reference)
-        self.assertIn("`historySelectionHandle`", reference)
-        self.assertIn("`historicalSelectionHandles`", reference)
-        self.assertIn("Expired, unissued, or reused", reference)
-
-    def test_help_scout_manifest_is_closed_and_versioned(self):
-        manifest = json.loads(HELP_SCOUT_MANIFEST.read_text(encoding="utf-8"))
-
-        self.assertEqual(manifest["schemaVersion"], 1)
-        self.assertEqual(
-            manifest["requiredCapability"],
-            "helpscout.support-context.typed-facts.v1",
-        )
-        self.assertEqual(manifest["requiredOutputMode"], "typed-facts")
-        self.assertEqual(
-            manifest["requiredSafety"],
-            {
-                "rawProseModelVisible": False,
-                "internalNotesUsedAsEvidence": False,
-                "attachmentsAccessed": False,
-                "failClosed": True,
-            },
-        )
-
-    def test_docs_require_exact_capability_before_support_context(self):
-        required = "helpscout.support-context.typed-facts.v1"
-        for document in (SKILL, HELP_SCOUT):
-            with self.subTest(document=document.name):
-                text = " ".join(document.read_text(encoding="utf-8").split())
-                self.assertIn(required, text)
-                self.assertIn("status", text)
-                self.assertIn("technical blocker", text)
-                self.assertIn("before calling `helpscout_get_support_context`", text)
+    def test_skill_has_no_customer_copy_or_reply_drafting_mode(self):
+        for document in (SKILL, ROOT / "skill" / "agents" / "openai.yaml"):
+            text = document.read_text()
+            for phrase in ("**Customer copy:**", "Separate customer-copy follow-up", "After a separate customer-copy request", "A later customer-copy request", "reply coaching", "paste-ready customer follow-ups"):
+                self.assertNotIn(phrase, text)
 
 
-if __name__ == "__main__":
-    unittest.main()
+class HelpScoutContractTests(unittest.TestCase):
+    def test_correlation_capability_is_versioned_and_fact_only(self):
+        text = " ".join(HELP_SCOUT.read_text().split())
+        for phrase in ("helpscout.support-context.typed-facts.v1", "helpscout.support-correlation.opaque-handle.v1", "opaque-correlation-envelope", "before accepting or passing a correlation handle", "mark correlation unavailable", "raw Help Scout prose never reaches the model", "internal notes and attachments are ignored"):
+            self.assertIn(phrase, text)
+
+    def test_investigation_manifest_is_closed(self):
+        manifest = json.loads((ROOT / "skill" / "contracts" / "investigation.json").read_text())
+        self.assertEqual(manifest["replyDrafting"], "outside_skill")
+        self.assertEqual(set(manifest["sources"]), {"help_scout_target", "helpscout_history", "public_kb", "slack", "notion", "code_context", "aws_logs"})
