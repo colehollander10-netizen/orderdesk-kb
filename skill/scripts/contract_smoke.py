@@ -232,6 +232,8 @@ def check_help_scout_integration(root: Path, manifest: dict) -> None:
     )
     require(actual.get("correlationCapability") == "helpscout.support-correlation.opaque-handle.v1", "Help Scout correlation capability mismatch")
     require(actual.get("correlationOutputMode") == "opaque-correlation-envelope", "Help Scout correlation output mode mismatch")
+    correlation = json.loads(HELP_SCOUT_CORRELATION_MANIFEST.read_text(encoding="utf-8"))
+    require(actual.get("correlationEnvelope") == correlation["envelope"], "Help Scout correlation envelope mismatch")
 
 
 def check_local_contracts() -> dict:

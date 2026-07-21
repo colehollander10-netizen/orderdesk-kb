@@ -36,7 +36,7 @@ class InvestigationHarnessTests(unittest.TestCase):
         received = []
         def aws(step, handle):
             received.append(handle)
-            return "resolved"
+            return {"outcome": "resolved"}
         case = {"name": "two_runtime", "claims": ["runtime_event", "runtime_event"], "correlationAvailable": True, "responses": {}}
         result = run_case(case, {"aws_logs": aws})
         self.assertEqual(len(received), 1)
@@ -66,7 +66,7 @@ class InvestigationHarnessTests(unittest.TestCase):
         missing_schema = run_case(next(item for item in CASES if item["name"] == "runtime_without_schema"))
         self.assertEqual(missing_schema["plan"]["sourceCoverage"]["aws_logs"], {"status": "skipped", "reason": "log_contract_unavailable"})
         self.assertEqual(missing_schema["nextStep"], "Hand off to the AWS log-contract owner")
-        stopped = run_case({"name": "masking_hard_stop", "claims": ["recent_team_context"], "responses": {"slack": ["stopped:masking_failed"]}})
+        stopped = run_case({"name": "masking_hard_stop", "claims": ["recent_team_context"], "responses": {"slack": [{"outcome": "stopped", "safeError": "masking_failed"}]}})
         self.assertEqual(stopped["plan"]["status"], "stopped")
         self.assertTrue(all(item["status"] == "stopped" for item in stopped["sourceCoverage"].values()))
         self.assertNotIn("brief", stopped)
@@ -75,10 +75,10 @@ class InvestigationHarnessTests(unittest.TestCase):
         calls = []
         def resolved(step, handle):
             calls.append(step["source"])
-            return "resolved"
+            return {"outcome": "resolved"}
         def stopped(step, handle):
             calls.append(step["source"])
-            return "stopped:masking_failed"
+            return {"outcome": "stopped", "safeError": "masking_failed"}
         def forbidden(step, handle):
             raise AssertionError("later private callback must not run")
         result = run_case(
@@ -93,3 +93,9 @@ class InvestigationHarnessTests(unittest.TestCase):
         self.assertNotIn("route", result)
         self.assertNotIn("nextStep", result)
         self.assertNotIn("brief", result)
+
+    def test_callback_envelopes_are_closed_and_stops_require_closed_error(self):
+        case = {"name": "envelope", "claims": ["recent_team_context"], "responses": {}}
+        for envelope in ({"outcome": "stopped", "safeError": "arbitrary"}, {"outcome": "resolved", "extra": True}, "stopped:masking_failed"):
+            with self.assertRaises(ValueError):
+                run_case(case, {"slack": lambda step, handle, value=envelope: value})

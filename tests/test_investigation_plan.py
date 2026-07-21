@@ -40,18 +40,13 @@ class InvestigationPlanTests(unittest.TestCase):
         result = self.module.plan_investigation(payload)
         self.assertEqual([step["source"] for step in result["steps"]], ["slack"])
 
-    def test_build_claims_uses_full_context_signals_without_missing_code(self):
+    def test_build_claims_uses_closed_missing_evidence_codes_without_connector_signals(self):
         payload = self.case("full_context_slack")["input"]
-        facts = [
-            {"key": "investigation_signal", "value": "recent_team_context"},
-            {"key": "investigation_signal", "value": "implementation_behavior"},
-            {"key": "investigation_signal", "value": "runtime_event"},
-            {"key": "log_lookup_kind", "value": "order_import"},
-        ]
+        facts = [{"key": "missing_evidence_code", "value": "runtime_order_import"}]
         claims = self.module.build_claims(payload["sanitizedQuestion"], facts, [])
         self.assertEqual([claim["kind"] for claim in claims], ["implementation_behavior", "recent_team_context", "runtime_event"])
-        result = self.module.plan_investigation({**payload, "safeFacts": facts, "missingEvidence": [], "correlationAvailable": True, "enabledLogKinds": ["order_import"]})
-        self.assertEqual([step["source"] for step in result["steps"]], ["code_context", "slack", "aws_logs"])
+        with self.assertRaisesRegex(ValueError, "undeclared"):
+            self.module.plan_investigation({**payload, "safeFacts": [{"key": "investigation_signal", "value": "recent_team_context"}]})
 
     def test_closed_target_context_derives_claims_without_connector_only_signals(self):
         payload = self.case("full_context_slack")["input"]
@@ -59,6 +54,8 @@ class InvestigationPlanTests(unittest.TestCase):
         self.assertEqual([step["source"] for step in result["steps"]], ["code_context", "slack", "aws_logs"])
         unknown = self.module.plan_investigation({**payload, "missingEvidence": [], "safeFacts": [], "sanitizedQuestion": {**payload["sanitizedQuestion"], "observedBehavior": "unmapped"}, "correlationAvailable": True, "enabledLogKinds": ["order_import"]})
         self.assertEqual(unknown["steps"], [])
+        expected_unknown = self.module.plan_investigation({**payload, "missingEvidence": [], "safeFacts": [], "sanitizedQuestion": {**payload["sanitizedQuestion"], "expectedBehavior": "unmapped"}, "correlationAvailable": True, "enabledLogKinds": ["order_import"]})
+        self.assertEqual(expected_unknown["steps"], [])
 
     def test_history_is_optional_and_requires_prior_case_claim(self):
         public = self.module.plan_investigation(self.case("public_only")["input"])

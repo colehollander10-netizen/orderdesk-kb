@@ -102,6 +102,7 @@ class ContractSmokePortabilityTests(unittest.TestCase):
                 },
                 "correlationCapability": "helpscout.support-correlation.opaque-handle.v1",
                 "correlationOutputMode": "opaque-correlation-envelope",
+                "correlationEnvelope": {"variants": {"available": ["state", "correlationHandle", "lookupKinds"], "not_found": ["state", "lookupKinds"], "unavailable": ["state", "lookupKinds"]}},
             }
             executable.write_text(
                 "#!/usr/bin/env python3\n"

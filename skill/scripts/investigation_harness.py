@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from .brief_evidence import evaluate_evidence
-from .investigation_plan import merge_source_result, plan_investigation, stopped_plan
+from .investigation_plan import STOP_ERRORS, merge_source_result, plan_investigation, stopped_plan
 
 
 SOURCE_TYPE = {
@@ -25,6 +25,17 @@ AUTHORITY = {
     "aws_logs": "supporting",
 }
 _SYNTHETIC_AWS_TRANSIT = object()
+
+
+def _callback_envelope(value: object) -> dict[str, str]:
+    if not isinstance(value, dict) or value.get("outcome") not in {"resolved", "unresolved", "unavailable", "stopped"}:
+        raise ValueError("synthetic callback envelope is invalid")
+    expected = {"outcome", "safeError"} if value["outcome"] == "stopped" else {"outcome"}
+    if set(value) != expected:
+        raise ValueError("synthetic callback envelope has unexpected fields")
+    if value["outcome"] == "stopped" and value["safeError"] not in STOP_ERRORS:
+        raise ValueError("synthetic callback stop error is invalid")
+    return dict(value)
 
 
 def expand_case_input(case: dict) -> dict:
@@ -92,7 +103,9 @@ def render_brief(plan: dict, evidence_result: dict, route: str, next_step: str) 
     coverage = "; ".join(f"{source}: {item['status']} ({item['reason']})" for source, item in plan["sourceCoverage"].items())
     plan_lines = "; ".join(f"{item['claimId']}: {item['status']} ({item['reason']})" for item in plan["claimDispositions"])
     ledger = "; ".join(f"{item['source_type']} {item['safe_reference']} {item['source_date']} {item['retrieved_at']} {item['authority']} {item['claim_supported']}" for item in evidence_result["evidence"]) or "No governed evidence established."
-    conflicts = "; ".join(item["reason"] for item in evidence_result["conflicts"]) or "None."
+    conflicts = "; ".join(f"{item['claim_key']}: {', '.join(item['competing_claim_values'])}; refs {', '.join(item['source_ids'])}; {item['reason']}" for item in evidence_result["conflicts"]) or "None."
+    similar = "History checked: bounded historical evidence is not current policy." if plan["sourceCoverage"]["helpscout_history"]["status"] == "checked" else "History not checked."
+    unknown = next((f"{item['claimId']}: {item['reason']}" for item in plan["claimDispositions"] if item["status"] != "resolved"), "No unresolved claim.")
     return "\n\n".join((
         "**Support Investigation Brief**\n\n**Question / Scope**\nSanitized ticket investigation.",
         f"**Investigation Plan**\n{plan_lines}",
@@ -102,16 +115,16 @@ def render_brief(plan: dict, evidence_result: dict, route: str, next_step: str) 
         f"**Source Ledger**\n{ledger}",
         "**Evidence Status**\nDocumented behavior, possible explanation, and not established remain separate.",
         "**Likely Pattern**\nNot established beyond direct synthetic evidence.",
-        "**Similar Tickets**\nNot checked unless Help Scout history appears in coverage.",
+        f"**Similar Tickets**\n{similar}",
         f"**Conflicts**\n{conflicts}",
-        "**Unknowns**\nSmallest unresolved claim or unavailable governed source.",
+        f"**Unknowns**\n{unknown}",
         "**Public KB Links**\nSynthetic public reference only when Public KB evidence exists.",
         f"**Suggested Next Step**\n{next_step}",
         "**Reply Boundary**\nCustomer-reply drafting is outside `/orderdesk`; no customer-facing wording was produced.",
     ))
 
 
-def run_case(case: dict, tool_runner: dict[str, Callable[..., str]] | None = None) -> dict:
+def run_case(case: dict, tool_runner: dict[str, Callable[..., dict]] | None = None) -> dict:
     """Run injected callbacks only; it never opens a connector or serializes a handle."""
     state = expand_case_input(case)
     responses = {source: list(tokens) for source, tokens in case.get("responses", {}).items()}
@@ -127,16 +140,17 @@ def run_case(case: dict, tool_runner: dict[str, Callable[..., str]] | None = Non
                 plan = plan_investigation(state)
                 break
             if tool_runner and source in tool_runner:
-                token = tool_runner[source](step, _SYNTHETIC_AWS_TRANSIT if source == "aws_logs" else None)
+                envelope = tool_runner[source](step, _SYNTHETIC_AWS_TRANSIT if source == "aws_logs" else None)
             else:
-                token = responses[source].pop(0)
-            outcome, _, safe_error = token.partition(":")
+                envelope = responses[source].pop(0)
+            envelope = _callback_envelope(envelope)
+            outcome = envelope["outcome"]
             handle_transit = source == "aws_logs"
             if handle_transit and not case.get("correlationAvailable"):
                 raise ValueError("AWS stub requires correlation availability")
             trace.append({"source": source, "claimId": step["claimId"], "outcome": outcome, "handleTransit": handle_transit})
             if outcome == "stopped":
-                stopped = stopped_plan(state, safe_error)
+                stopped = stopped_plan(state, envelope["safeError"])
                 return {
                     "plan": stopped,
                     "sourceCoverage": stopped["sourceCoverage"],

@@ -23,7 +23,6 @@ CLAIM_SOURCE_ROUTES = {
     "implementation_behavior": ("code_context",),
     "runtime_event": ("aws_logs",),
 }
-SIGNAL_CLAIM_KINDS = set(CLAIM_SOURCE_ROUTES)
 LOG_LOOKUP_KINDS = {
     "fulfillment_submission",
     "order_import",
@@ -33,7 +32,7 @@ LOG_LOOKUP_KINDS = {
 }
 # Reviewed closed intake derivation. Unknown values never widen authority.
 QUESTION_CLAIM_MAP = {
-    ("order_import", "provider_to_order_desk", "orders_delayed"): (
+    ("order_import", "provider_to_order_desk", "orders_delayed", "orders_imported"): (
         "implementation_behavior", "recent_team_context", "runtime_event",
     ),
 }
@@ -47,6 +46,7 @@ SAFE_FACT_CLAIM_MAP = {
         "runtime_order_import": ("runtime_event", "order_import"),
     },
 }
+SAFE_FACT_KEYS = {"provider_family", "affected_scope", "rule_event", "missing_evidence_code"}
 STOP_ERRORS = {
     "support_context_blocked",
     "policy_denied",
@@ -96,7 +96,10 @@ def _validate_question(question: Any) -> dict[str, Any]:
 
 def _validate_fact(fact: Any, index: int) -> dict[str, str]:
     item = _require_keys(fact, {"key", "value"}, f"safeFacts[{index}]")
-    return {"key": _non_empty_string(item["key"], f"safeFacts[{index}].key"), "value": _non_empty_string(item["value"], f"safeFacts[{index}].value")}
+    key = _non_empty_string(item["key"], f"safeFacts[{index}].key")
+    if key not in SAFE_FACT_KEYS:
+        raise ValueError("safe fact key is undeclared")
+    return {"key": key, "value": _non_empty_string(item["value"], f"safeFacts[{index}].value")}
 
 
 def _validate_attempt(attempt: Any, index: int, claim_kind: str) -> dict[str, str]:
@@ -171,11 +174,10 @@ def validate_planning_state(payload: object) -> dict[str, Any]:
 def build_claims(sanitized_question: dict, safe_facts: list[dict], missing_evidence: list[dict]) -> list[dict]:
     """Add only closed signal claims; source content never enters this state."""
     claims = {item["id"]: copy.deepcopy(item) for item in missing_evidence}
-    derived = QUESTION_CLAIM_MAP.get((sanitized_question["productArea"], sanitized_question["workflow"], sanitized_question["observedBehavior"]), ()) if not missing_evidence else ()
+    derived = QUESTION_CLAIM_MAP.get((sanitized_question["productArea"], sanitized_question["workflow"], sanitized_question["observedBehavior"], sanitized_question["expectedBehavior"]), ()) if not missing_evidence else ()
     fact_derived = [SAFE_FACT_CLAIM_MAP.get(fact["key"], {}).get(fact["value"]) for fact in safe_facts]
-    signals = sorted({*derived, *(fact[0] for fact in fact_derived if fact) , *(fact["value"] for fact in safe_facts if fact["key"] == "investigation_signal" and fact["value"] in SIGNAL_CLAIM_KINDS)})
-    lookup_kind = next((fact["value"] for fact in safe_facts if fact["key"] == "log_lookup_kind" and fact["value"] in LOG_LOOKUP_KINDS), None)
-    lookup_kind = lookup_kind or next((fact[1] for fact in fact_derived if fact and fact[1]), None)
+    signals = sorted({*derived, *(fact[0] for fact in fact_derived if fact)})
+    lookup_kind = next((fact[1] for fact in fact_derived if fact and fact[1]), None)
     if "runtime_event" in derived and sanitized_question["productArea"] == "order_import":
         lookup_kind = lookup_kind or "order_import"
     existing_kinds = {claim["kind"] for claim in claims.values()}
