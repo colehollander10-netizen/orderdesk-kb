@@ -12,6 +12,17 @@ FIXTURE = ROOT / "tests" / "fixtures" / "freshness_conflict.json"
 BRIEF_TEMPLATE = ROOT / "skill" / "references" / "internal-brief.md"
 
 
+def evidence_record(record_id, claim_value, *, source_type="notion", source_date="2026-07-01", authority="authoritative"):
+    return {
+        "id": record_id, "claim_key": "resolution", "claim_value": claim_value,
+        "summary": f"Synthetic sanitized evidence for {claim_value}.",
+        "source_type": source_type, "safe_reference": f"safe-{record_id}",
+        "source_date": source_date, "retrieved_at": "2026-07-21T16:30:00Z",
+        "authority": authority, "claim_supported": f"Resolution is {claim_value}.",
+        "coverage": "Synthetic bounded fixture.",
+    }
+
+
 class BriefEvidenceContractTests(unittest.TestCase):
     def run_fixture(self, fixture):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
@@ -52,24 +63,8 @@ class BriefEvidenceContractTests(unittest.TestCase):
     def test_equal_authority_and_date_remains_unresolved(self):
         fixture = {
             "evidence": [
-                {
-                    "id": "source_a",
-                    "claim_key": "resolution",
-                    "claim_value": "path_a",
-                    "summary": "Sanitized path A.",
-                    "source_type": "policy",
-                    "source_date": "2026-07-01",
-                    "authority": "authoritative",
-                },
-                {
-                    "id": "source_b",
-                    "claim_key": "resolution",
-                    "claim_value": "path_b",
-                    "summary": "Sanitized path B.",
-                    "source_type": "policy",
-                    "source_date": "2026-07-01",
-                    "authority": "authoritative",
-                },
+                evidence_record("source_a", "path_a"),
+                evidence_record("source_b", "path_b"),
             ]
         }
         completed = self.run_fixture(fixture)
@@ -79,18 +74,9 @@ class BriefEvidenceContractTests(unittest.TestCase):
         self.assertIsNone(conflict["preferred_source_id"])
 
     def test_missing_provenance_fails_the_contract(self):
-        fixture = {
-            "evidence": [
-                {
-                    "id": "source_a",
-                    "claim_key": "resolution",
-                    "claim_value": "path_a",
-                    "summary": "Sanitized path A.",
-                    "source_type": "policy",
-                    "authority": "authoritative",
-                }
-            ]
-        }
+        record = evidence_record("source_a", "path_a")
+        record.pop("source_date")
+        fixture = {"evidence": [record]}
         completed = self.run_fixture(fixture)
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("source_date", completed.stderr)
@@ -98,24 +84,8 @@ class BriefEvidenceContractTests(unittest.TestCase):
     def test_unknown_authority_remains_unresolved_even_when_dates_differ(self):
         fixture = {
             "evidence": [
-                {
-                    "id": "older_unknown",
-                    "claim_key": "resolution",
-                    "claim_value": "path_a",
-                    "summary": "Sanitized older source.",
-                    "source_type": "ticket",
-                    "source_date": "2025-01-01",
-                    "authority": "unknown",
-                },
-                {
-                    "id": "newer_unknown",
-                    "claim_key": "resolution",
-                    "claim_value": "path_b",
-                    "summary": "Sanitized newer source.",
-                    "source_type": "ticket",
-                    "source_date": "2026-01-01",
-                    "authority": "unknown",
-                },
+                evidence_record("older_unknown", "path_a", source_type="help_scout", source_date="2025-01-01", authority="unknown"),
+                evidence_record("newer_unknown", "path_b", source_type="help_scout", source_date="2026-01-01", authority="unknown"),
             ]
         }
         completed = self.run_fixture(fixture)
@@ -128,15 +98,7 @@ class BriefEvidenceContractTests(unittest.TestCase):
     def test_noncanonical_date_fails_the_contract(self):
         fixture = {
             "evidence": [
-                {
-                    "id": "source_a",
-                    "claim_key": "resolution",
-                    "claim_value": "path_a",
-                    "summary": "Sanitized path A.",
-                    "source_type": "policy",
-                    "source_date": "20260701",
-                    "authority": "authoritative",
-                }
+                evidence_record("source_a", "path_a", source_date="20260701"),
             ]
         }
         completed = self.run_fixture(fixture)
@@ -151,6 +113,26 @@ class BriefEvidenceContractTests(unittest.TestCase):
         self.assertIn("source date", template)
         self.assertIn("explicit authority", template)
         self.assertIn("Repetition is not a vote", template)
+
+    def test_every_governed_source_type_is_accepted(self):
+        records = [evidence_record(f"source_{index}", "supported", source_type=source_type) | {"claim_key": f"claim_{index}"} for index, source_type in enumerate(("help_scout", "public_kb", "slack", "notion", "code_context", "aws_logs"), start=1)]
+        result = self.run_fixture({"evidence": records})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual({item["source_type"] for item in json.loads(result.stdout)["evidence"]}, {"help_scout", "public_kb", "slack", "notion", "code_context", "aws_logs"})
+
+    def test_zero_evidence_coverage_only_abstention_is_valid(self):
+        coverage = {
+            "help_scout_target": {"status": "checked", "reason": "target_facts_received"},
+            "helpscout_history": {"status": "skipped", "reason": "not_needed_for_named_claim"},
+            "public_kb": {"status": "skipped", "reason": "safe_query_unavailable"},
+            "slack": {"status": "skipped", "reason": "safe_query_unavailable"},
+            "notion": {"status": "skipped", "reason": "safe_query_unavailable"},
+            "code_context": {"status": "skipped", "reason": "safe_query_unavailable"},
+            "aws_logs": {"status": "unavailable", "reason": "correlation_unavailable"},
+        }
+        completed = self.run_fixture({"evidence": [], "sourceCoverage": coverage})
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(json.loads(completed.stdout)["sourceCoverage"], coverage)
 
 
 if __name__ == "__main__":

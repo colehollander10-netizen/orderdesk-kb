@@ -1,49 +1,9 @@
 {
   "evidence": [
-    {
-      "id": "historical_ticket_a",
-      "claim_key": "recommended_resolution",
-      "claim_value": "legacy_resolution",
-      "summary": "Sanitized historical example A repeats the legacy resolution.",
-      "source_type": "ticket",
-      "source_date": "2024-01-10",
-      "authority": "historical"
-    },
-    {
-      "id": "historical_ticket_b",
-      "claim_key": "recommended_resolution",
-      "claim_value": "legacy_resolution",
-      "summary": "Sanitized historical example B repeats the legacy resolution.",
-      "source_type": "ticket",
-      "source_date": "2024-03-12",
-      "authority": "historical"
-    },
-    {
-      "id": "historical_ticket_c",
-      "claim_key": "recommended_resolution",
-      "claim_value": "legacy_resolution",
-      "summary": "Sanitized historical example C repeats the legacy resolution.",
-      "source_type": "ticket",
-      "source_date": "2024-05-14",
-      "authority": "historical"
-    },
-    {
-      "id": "historical_ticket_d",
-      "claim_key": "recommended_resolution",
-      "claim_value": "legacy_resolution",
-      "summary": "Sanitized historical example D repeats the legacy resolution.",
-      "source_type": "ticket",
-      "source_date": "2024-07-16",
-      "authority": "historical"
-    },
-    {
-      "id": "current_policy",
-      "claim_key": "recommended_resolution",
-      "claim_value": "current_resolution",
-      "summary": "Sanitized current policy example establishes the current resolution.",
-      "source_type": "policy",
-      "source_date": "2026-06-15",
-      "authority": "authoritative"
-    }
+    {"id":"historical_ticket_a","claim_key":"recommended_resolution","claim_value":"legacy_resolution","summary":"Sanitized historical example A repeats the legacy resolution.","source_type":"help_scout","safe_reference":"historical-case-a","source_date":"2024-01-10","retrieved_at":"2026-07-21T16:30:00Z","authority":"historical","claim_supported":"The legacy resolution was used in this historical case.","coverage":"One bounded historical Help Scout case."},
+    {"id":"historical_ticket_b","claim_key":"recommended_resolution","claim_value":"legacy_resolution","summary":"Sanitized historical example B repeats the legacy resolution.","source_type":"help_scout","safe_reference":"historical-case-b","source_date":"2024-03-12","retrieved_at":"2026-07-21T16:30:00Z","authority":"historical","claim_supported":"The legacy resolution was used in this historical case.","coverage":"One bounded historical Help Scout case."},
+    {"id":"historical_ticket_c","claim_key":"recommended_resolution","claim_value":"legacy_resolution","summary":"Sanitized historical example C repeats the legacy resolution.","source_type":"help_scout","safe_reference":"historical-case-c","source_date":"2024-05-14","retrieved_at":"2026-07-21T16:30:00Z","authority":"historical","claim_supported":"The legacy resolution was used in this historical case.","coverage":"One bounded historical Help Scout case."},
+    {"id":"historical_ticket_d","claim_key":"recommended_resolution","claim_value":"legacy_resolution","summary":"Sanitized historical example D repeats the legacy resolution.","source_type":"help_scout","safe_reference":"historical-case-d","source_date":"2024-07-16","retrieved_at":"2026-07-21T16:30:00Z","authority":"historical","claim_supported":"The legacy resolution was used in this historical case.","coverage":"One bounded historical Help Scout case."},
+    {"id":"current_policy","claim_key":"recommended_resolution","claim_value":"current_resolution","summary":"Sanitized current policy example establishes the current resolution.","source_type":"notion","safe_reference":"current-policy-page","source_date":"2026-06-15","retrieved_at":"2026-07-21T16:30:00Z","authority":"authoritative","claim_supported":"The current resolution is required by policy.","coverage":"One approved bounded Notion policy page."}
   ]
 }
