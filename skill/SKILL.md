@@ -36,7 +36,7 @@ Use `scripts/investigation_plan.py` only with sanitized closed facts and safe av
 | `implementation_behavior` | governed `code_context` |
 | `runtime_event` | governed schema-enabled `aws_log_lookup` |
 
-Every private call names one unresolved claim. After each `resolved`, `unresolved`, `unavailable`, or `stopped` result, merge and replan. Never use a cross-authority fallback that cannot establish the original claim. Record every claim before source coverage: `checked`, `planned`, `skipped`, `unavailable`, or `stopped` with a fixed reason.
+Every private call names one unresolved claim. After each `resolved`, `unresolved`, `unavailable`, or `stopped` result, merge and replan. Claim dispositions are exactly `resolved`, `planned`, `exhausted`, `unavailable`, or `stopped`; source coverage is exactly `checked`, `planned`, `skipped`, `unavailable`, or `stopped`. Never use a cross-authority fallback that cannot establish the original claim.
 
 AWS is optional. Use it only for `runtime_event`, only when the gateway advertises the schema-specific log contract, and only when trusted intake reports correlation availability. Pass the exact opaque handle directly once; never copy it into a planner, query, evidence, or brief. If unavailable, record the safe skipped reason and abstain; never browse S3 generically.
 

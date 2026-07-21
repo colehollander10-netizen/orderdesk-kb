@@ -53,6 +53,13 @@ class InvestigationPlanTests(unittest.TestCase):
         result = self.module.plan_investigation({**payload, "safeFacts": facts, "missingEvidence": [], "correlationAvailable": True, "enabledLogKinds": ["order_import"]})
         self.assertEqual([step["source"] for step in result["steps"]], ["code_context", "slack", "aws_logs"])
 
+    def test_closed_target_context_derives_claims_without_connector_only_signals(self):
+        payload = self.case("full_context_slack")["input"]
+        result = self.module.plan_investigation({**payload, "missingEvidence": [], "safeFacts": [], "correlationAvailable": True, "enabledLogKinds": ["order_import"]})
+        self.assertEqual([step["source"] for step in result["steps"]], ["code_context", "slack", "aws_logs"])
+        unknown = self.module.plan_investigation({**payload, "missingEvidence": [], "safeFacts": [], "sanitizedQuestion": {**payload["sanitizedQuestion"], "observedBehavior": "unmapped"}, "correlationAvailable": True, "enabledLogKinds": ["order_import"]})
+        self.assertEqual(unknown["steps"], [])
+
     def test_history_is_optional_and_requires_prior_case_claim(self):
         public = self.module.plan_investigation(self.case("public_only")["input"])
         self.assertEqual(public["sourceCoverage"]["help_scout_target"]["status"], "checked")

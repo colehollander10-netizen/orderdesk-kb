@@ -31,6 +31,22 @@ LOG_LOOKUP_KINDS = {
     "shipment_tracking",
     "provider_api_error",
 }
+# Reviewed closed intake derivation. Unknown values never widen authority.
+QUESTION_CLAIM_MAP = {
+    ("order_import", "provider_to_order_desk", "orders_delayed"): (
+        "implementation_behavior", "recent_team_context", "runtime_event",
+    ),
+}
+SAFE_FACT_CLAIM_MAP = {
+    "missing_evidence_code": {
+        "documented_behavior": ("documented_behavior", None),
+        "prior_case_handling": ("prior_case_handling", None),
+        "recent_team_context": ("recent_team_context", None),
+        "intended_process": ("intended_process", None),
+        "implementation_behavior": ("implementation_behavior", None),
+        "runtime_order_import": ("runtime_event", "order_import"),
+    },
+}
 STOP_ERRORS = {
     "support_context_blocked",
     "policy_denied",
@@ -155,8 +171,13 @@ def validate_planning_state(payload: object) -> dict[str, Any]:
 def build_claims(sanitized_question: dict, safe_facts: list[dict], missing_evidence: list[dict]) -> list[dict]:
     """Add only closed signal claims; source content never enters this state."""
     claims = {item["id"]: copy.deepcopy(item) for item in missing_evidence}
-    signals = sorted({fact["value"] for fact in safe_facts if fact["key"] == "investigation_signal" and fact["value"] in SIGNAL_CLAIM_KINDS})
+    derived = QUESTION_CLAIM_MAP.get((sanitized_question["productArea"], sanitized_question["workflow"], sanitized_question["observedBehavior"]), ()) if not missing_evidence else ()
+    fact_derived = [SAFE_FACT_CLAIM_MAP.get(fact["key"], {}).get(fact["value"]) for fact in safe_facts]
+    signals = sorted({*derived, *(fact[0] for fact in fact_derived if fact) , *(fact["value"] for fact in safe_facts if fact["key"] == "investigation_signal" and fact["value"] in SIGNAL_CLAIM_KINDS)})
     lookup_kind = next((fact["value"] for fact in safe_facts if fact["key"] == "log_lookup_kind" and fact["value"] in LOG_LOOKUP_KINDS), None)
+    lookup_kind = lookup_kind or next((fact[1] for fact in fact_derived if fact and fact[1]), None)
+    if "runtime_event" in derived and sanitized_question["productArea"] == "order_import":
+        lookup_kind = lookup_kind or "order_import"
     existing_kinds = {claim["kind"] for claim in claims.values()}
     for kind in signals:
         if kind in existing_kinds:

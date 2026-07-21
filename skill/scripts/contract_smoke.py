@@ -185,14 +185,18 @@ def check_investigation_manifest() -> dict:
     require(manifest.get("schemaVersion") == 1, "investigation schema mismatch")
     require(manifest.get("entrypoint") == {"input": "positive_help_scout_ticket_number", "output": "internal_investigation_brief"}, "investigation entrypoint mismatch")
     require(manifest.get("replyDrafting") == "outside_skill", "reply drafting boundary mismatch")
-    require(set(manifest.get("sources", {})) == {"help_scout_target", "public_kb", "helpscout_history", "slack", "notion", "code_context", "aws_logs"}, "investigation source set mismatch")
+    require(manifest.get("sources") == {"help_scout_target": {"requiredTool": "helpscout_get_support_context", "mandatory": True}, "public_kb": {"claimKinds": ["documented_behavior"], "requiredTool": "public_kb.py"}, "helpscout_history": {"claimKinds": ["prior_case_handling"], "requiredTool": "helpscout_get_support_context"}, "slack": {"claimKinds": ["recent_team_context"], "requiredTool": "slack_search"}, "notion": {"claimKinds": ["intended_process"], "requiredTool": "notion_search"}, "code_context": {"claimKinds": ["implementation_behavior"], "requiredTool": "code_context"}, "aws_logs": {"claimKinds": ["runtime_event"], "requiredTool": "aws_log_lookup", "capabilityGated": True}}, "investigation source/tool contract mismatch")
     require(manifest.get("claimSourceRoutes") == {"documented_behavior": ["public_kb"], "prior_case_handling": ["helpscout_history"], "recent_team_context": ["slack"], "intended_process": ["notion"], "implementation_behavior": ["code_context"], "runtime_event": ["aws_logs"]}, "investigation ordered routes mismatch")
     require(manifest.get("replyDrafting") == "outside_skill", "reply drafting boundary mismatch")
+    require(manifest.get("requiredBriefSections") == ["Question / Scope", "Investigation Plan", "What I Checked", "Coverage and Freshness", "Route", "Source Ledger", "Evidence Status", "Likely Pattern", "Similar Tickets", "Conflicts", "Unknowns", "Public KB Links", "Suggested Next Step", "Reply Boundary"], "investigation brief sections mismatch")
+    require(manifest.get("stopErrors") == ["support_context_blocked", "policy_denied", "scope_denied", "unsafe_query", "masking_failed", "audit_failed", "handle_integrity_failed", "credential_boundary_failed"], "investigation stop errors mismatch")
+    require(manifest.get("safety") == {"governedToolsOnly": True, "rawPrivateContentModelVisible": False, "operationalIdentifiersModelVisible": False, "opaqueHandleTransitOnly": True, "opaqueHandlesFinalBriefVisible": False, "privateSourceSubagents": False, "writesAllowed": False, "genericLogBrowsingAllowed": False}, "investigation safety contract mismatch")
     correlation = json.loads(HELP_SCOUT_CORRELATION_MANIFEST.read_text(encoding="utf-8"))
     require(correlation.get("schemaVersion") == 1, "correlation schema mismatch")
     require(correlation.get("requiredCapability") == "helpscout.support-correlation.opaque-handle.v1", "correlation capability mismatch")
     require(correlation.get("requiredOutputMode") == "opaque-correlation-envelope", "correlation output mode mismatch")
     require(correlation.get("envelope") == {"variants": {"available": ["state", "correlationHandle", "lookupKinds"], "not_found": ["state", "lookupKinds"], "unavailable": ["state", "lookupKinds"]}}, "correlation envelope mismatch")
+    require(correlation.get("safety") == {"operationalIdentifiersModelVisible": False, "rawTicketProseModelVisible": False, "opaqueHandleTransitOnly": True, "opaqueHandleLogged": False, "opaqueHandlePersisted": False}, "correlation safety mismatch")
     return manifest
 
 

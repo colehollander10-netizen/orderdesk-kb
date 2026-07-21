@@ -88,6 +88,8 @@ def _normalize_record(record: Any, index: int) -> dict[str, Any]:
     if missing:
         names = ", ".join(sorted(missing))
         raise ValueError(f"evidence[{index}] missing required fields: {names}")
+    if set(record) != REQUIRED_FIELDS:
+        raise ValueError(f"evidence[{index}] fields must exactly equal the contract")
 
     normalized = {
         field: _required_string(record, field, index) for field in REQUIRED_FIELDS

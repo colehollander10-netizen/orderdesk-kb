@@ -81,6 +81,14 @@ class BriefEvidenceContractTests(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("source_date", completed.stderr)
 
+    def test_extra_private_or_arbitrary_evidence_fields_fail_closed(self):
+        for field in ("rawTicketText", "correlationHandle", "extra", "__dict__"):
+            record = evidence_record("source_a", "path_a")
+            record[field] = "forbidden"
+            completed = self.run_fixture({"evidence": [record]})
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("exactly", completed.stderr)
+
     def test_unknown_authority_remains_unresolved_even_when_dates_differ(self):
         fixture = {
             "evidence": [
@@ -133,6 +141,17 @@ class BriefEvidenceContractTests(unittest.TestCase):
         completed = self.run_fixture({"evidence": [], "sourceCoverage": coverage})
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(json.loads(completed.stdout)["sourceCoverage"], coverage)
+
+    def test_source_coverage_rejects_extra_fields_and_unknown_reasons(self):
+        coverage = {source: {"status": "skipped", "reason": "not_needed_for_named_claim"} for source in ("help_scout_target", "helpscout_history", "public_kb", "slack", "notion", "code_context", "aws_logs")}
+        coverage["help_scout_target"] = {"status": "checked", "reason": "target_facts_received", "detail": "forbidden"}
+        completed = self.run_fixture({"evidence": [], "sourceCoverage": coverage})
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("only status and reason", completed.stderr)
+        coverage["help_scout_target"] = {"status": "checked", "reason": "invented_reason"}
+        completed = self.run_fixture({"evidence": [], "sourceCoverage": coverage})
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("reason is invalid", completed.stderr)
 
 
 if __name__ == "__main__":
