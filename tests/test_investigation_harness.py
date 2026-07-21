@@ -37,7 +37,7 @@ class InvestigationHarnessTests(unittest.TestCase):
         missing_schema = run_case(next(item for item in CASES if item["name"] == "runtime_without_schema"))
         self.assertEqual(missing_schema["plan"]["sourceCoverage"]["aws_logs"], {"status": "skipped", "reason": "log_contract_unavailable"})
         self.assertEqual(missing_schema["nextStep"], "Hand off to the AWS log-contract owner")
-        stopped = run_case(next(item for item in CASES if item["name"] == "masking_hard_stop"))
+        stopped = run_case({"name": "masking_hard_stop", "claims": ["recent_team_context"], "responses": {"slack": ["stopped:masking_failed"]}})
         self.assertEqual(stopped["plan"]["status"], "stopped")
         self.assertTrue(all(item["status"] == "stopped" for item in stopped["sourceCoverage"].values()))
         self.assertIsNone(stopped["brief"])
