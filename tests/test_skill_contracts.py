@@ -14,12 +14,12 @@ SKILL = ROOT / "skill" / "SKILL.md"
 class MultiSourceBriefContractTests(unittest.TestCase):
     def test_slack_search_is_claim_routed_and_bounded(self):
         governed = " ".join(GOVERNED_CONTEXT.read_text().split())
-        for phrase in ("`slack_search`", "`recent_team_context`", "safe product, provider, behavior, workflow, rule, or error-family terms", "files and attachments remain withheld", "no match within the bounded search", "not a comprehensive Slack absence"):
+        for phrase in ("`slack_search`", "`recent_team_context`", "safe product, provider, behavior, workflow, rule, or error-family terms", "files and attachments remain withheld", "no match within the bounded search", "not a comprehensive Slack absence", "Slack-only supporting evidence does not establish policy, deployment, runtime cause, or a confirmed fix"):
             self.assertIn(phrase, governed)
 
     def test_code_context_and_aws_are_governed(self):
         governed = " ".join(GOVERNED_CONTEXT.read_text().split())
-        for phrase in ("`code_context`", "repository, path, line, and immutable commit", "approved default-branch snapshot", "does not prove deployment", "`aws_log_lookup`", "`runtime_event`", "correlation availability", "schema-specific capability", "generic S3 browsing is forbidden", "raw log lines never reach the model"):
+        for phrase in ("`code_context`", "repository, path, line, and immutable commit", "approved default-branch snapshot", "does not prove deployment", "Code-only supporting evidence does not establish deployment, runtime cause, design intent, or that a code change is warranted", "`aws_log_lookup`", "`runtime_event`", "correlation availability", "schema-specific capability", "generic S3 browsing is forbidden", "raw log lines never reach the model"):
             self.assertIn(phrase, governed)
 
     def test_brief_records_plan_and_complete_source_disposition(self):
@@ -30,6 +30,18 @@ class MultiSourceBriefContractTests(unittest.TestCase):
         self.assertIn("checked, planned, skipped, unavailable, or stopped", template)
         self.assertIn("retrieval time", template)
         self.assertIn("Customer-reply drafting is outside `/orderdesk`", template)
+
+    def test_cross_source_findings_preserve_claim_roles_instead_of_global_winners(self):
+        skill = " ".join(SKILL.read_text().split())
+        for phrase in (
+            "intended process",
+            "implementation at the cited commit",
+            "neither source globally wins",
+            "deployed commit",
+            "runtime path",
+            "correct remediation",
+        ):
+            self.assertIn(phrase, skill)
 
 
 class InvestigationEntrypointContractTests(unittest.TestCase):

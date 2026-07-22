@@ -12,6 +12,8 @@ Use `slack_search` only for `recent_team_context`. Query with safe product, prov
 
 Record query category, time bound, result cap, returned result count, and retrieval time. An empty result is `no match within the bounded search`; it is not a comprehensive Slack absence. Treat Slack as supporting evidence unless a minimized record establishes an explicit decision and owner.
 
+Slack-only supporting evidence does not establish policy, deployment, runtime cause, or a confirmed fix. It may describe a possible workaround, but choose **Insufficient evidence — abstain** until an authoritative process source, direct runtime evidence, or a minimized Slack record with an explicit decision and owner establishes the action strongly enough for Support to rely on it.
+
 ### Notion
 
 Use `notion_search` only for `intended_process`, with non-identifying product, process, policy, requirement, or design terms and at most five titles initially. Read selected results only with `notion_page`, starting with at most 20 blocks. `Restricted` remains denied, `Support` remains stricter than `Internal`, and the strictest ancestor wins.
@@ -23,6 +25,8 @@ Record the title query, result cap, selected pages, block caps, dates, and retri
 Use `code_context` only for `implementation_behavior`, with a bounded safe product or behavior question. The gateway searches an approved default-branch snapshot and returns a small number of passages with repository, path, line, and immutable commit citations. Do not request a branch, tag, commit, history, blocked path, secret-bearing file, or deprecated code-search endpoint.
 
 Code is implementation evidence for the cited commit. It does not prove deployment, runtime state, customer configuration, incident cause, contractual behavior, or current live availability. A governed failure means `Code context remained unchecked`; do not infer absence or behavior.
+
+Code-only supporting evidence does not establish deployment, runtime cause, design intent, or that a code change is warranted. It may resolve what the cited commit implements, but choose **Insufficient evidence — abstain** until an intended-process source or runtime evidence establishes the missing claim. Hand the cited passages to Engineering to confirm intent and the deployed commit.
 
 ### AWS application logs
 

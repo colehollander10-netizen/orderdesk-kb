@@ -70,6 +70,23 @@ class InvestigationPlanTests(unittest.TestCase):
         self.assertEqual(merged["status"], "abstain")
         self.assertEqual(merged["sourceCoverage"]["slack"]["status"], "checked")
 
+    def test_resolved_claim_retains_the_source_that_resolved_it(self):
+        payload = self.case("full_context_slack")["input"]
+        merged = self.module.merge_source_result(
+            payload,
+            {"claimId": "c1", "source": "slack", "outcome": "resolved"},
+        )
+        self.assertEqual(
+            merged["claimDispositions"][0],
+            {
+                "claimId": "c1",
+                "status": "resolved",
+                "source": "slack",
+                "reason": "claim_resolved",
+                "skippedSources": [],
+            },
+        )
+
     def test_unavailable_result_abstains_and_merge_rejects_wrong_step(self):
         payload = self.case("full_context_slack")["input"]
         merged = self.module.merge_source_result(payload, {"claimId": "c1", "source": "slack", "outcome": "unavailable"})

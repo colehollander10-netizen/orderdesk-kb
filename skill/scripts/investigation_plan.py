@@ -201,7 +201,16 @@ def _disposition(claim: dict, status: str, source: str | None, reason: str, skip
 
 def plan_claim(data: dict, claim: dict) -> tuple[dict, dict | None]:
     if claim["status"] == "resolved" or any(attempt["outcome"] == "resolved" for attempt in claim["attempts"]):
-        return _disposition(claim, "resolved", None, "claim_resolved"), None
+        resolved_attempt = next(
+            (attempt for attempt in reversed(claim["attempts"]) if attempt["outcome"] == "resolved"),
+            None,
+        )
+        return _disposition(
+            claim,
+            "resolved",
+            resolved_attempt["source"] if resolved_attempt else None,
+            "claim_resolved",
+        ), None
     routes = CLAIM_SOURCE_ROUTES[claim["kind"]]
     if not claim["safeQueryAvailable"]:
         skipped = [{"source": source, "reason": "safe_query_unavailable"} for source in routes]

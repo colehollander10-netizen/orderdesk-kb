@@ -46,6 +46,12 @@ Stop before merge, replan, or rendering on `policy_denied`, `scope_denied`, `uns
 
 Follow [references/internal-brief.md](references/internal-brief.md). Include the Investigation Plan, complete coverage, freshness, one route, normalized Source Ledger, conflicts, unknowns, and one next step. Keep documented behavior, possible explanation, and not established separate. State a likely cause only when direct claim-specific evidence supports it.
 
+A resolved retrieval claim is not automatically a resolved Support answer. Preserve the source that resolved each claim and apply its authority when choosing the route. In particular, Slack-only supporting evidence stays a possible explanation and must abstain unless the governed result establishes an explicit decision and owner or another authoritative or runtime source confirms the action.
+
+Code-only supporting evidence may establish implementation behavior at the cited commit, but it must not become a deployment claim, runtime diagnosis, design-intent claim, or automatic **Likely code change** route. Abstain until intended-process or runtime evidence establishes the missing claim, and ask Engineering to verify intent plus the deployed commit.
+
+Before rendering a multi-source conclusion, preserve claim roles. Notion may establish intended process, while code may establish implementation at the cited commit. Compare those roles through a structured finding; neither source globally wins. When they differ, state the intent-versus-implementation mismatch, then preserve the deployed commit, runtime path, and correct remediation as separate unknowns. A mismatch may earn **Likely code change** only as an Engineering-review route, never as proof of production cause.
+
 **Reply Boundary**
 Customer-reply drafting is outside `/orderdesk`; no customer-facing wording was produced.
 

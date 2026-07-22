@@ -10,6 +10,75 @@ CASES = json.loads((ROOT / "tests" / "fixtures" / "orchestration_cases.json").re
 
 
 class InvestigationHarnessTests(unittest.TestCase):
+    @staticmethod
+    def recent_slack_evidence():
+        return {
+            "id": "slack-workaround",
+            "claim_key": "recent_team_context",
+            "claim_value": "temporary_retry_after_connection_refresh",
+            "summary": "A recent bounded Slack result describes a temporary retry after refreshing the provider connection.",
+            "source_type": "slack",
+            "safe_reference": "synthetic-slack-workaround",
+            "source_date": "2026-07-20",
+            "retrieved_at": "2026-07-22T15:00:00Z",
+            "authority": "supporting",
+            "claim_supported": "A recent team workaround was discussed.",
+            "coverage": "Message-only Slack search, 30-day window, one of at most ten results.",
+        }
+
+    @staticmethod
+    def code_retry_evidence():
+        commit = "1111111111111111111111111111111111111111"
+        return [
+            {
+                "id": "code-submission-handler",
+                "claim_key": "implementation_behavior",
+                "claim_value": "explicit_rejections_are_not_automatically_retried",
+                "summary": "The synthetic submission handler records an explicit provider rejection as a failed submission and does not enqueue an automatic retry.",
+                "source_type": "code_context",
+                "safe_reference": f"synthetic/orderdesk-v3:src/Fulfillment/SubmissionHandler.php:120-146@{commit}",
+                "source_date": "2026-07-21",
+                "retrieved_at": "2026-07-22T16:00:00Z",
+                "authority": "supporting",
+                "claim_supported": "Explicit provider rejections enter the failed-submission path.",
+                "coverage": "Approved default-branch snapshot; one bounded passage from the submission handler.",
+            },
+            {
+                "id": "code-retry-selector",
+                "claim_key": "implementation_behavior",
+                "claim_value": "explicit_rejections_are_not_automatically_retried",
+                "summary": "The synthetic retry selector includes transient transport failures but excludes explicit provider rejections.",
+                "source_type": "code_context",
+                "safe_reference": f"synthetic/orderdesk-v3:src/Jobs/RetryFailedSubmission.php:44-68@{commit}",
+                "source_date": "2026-07-21",
+                "retrieved_at": "2026-07-22T16:00:00Z",
+                "authority": "supporting",
+                "claim_supported": "Only transient transport failures are selected for automatic retry.",
+                "coverage": "Approved default-branch snapshot; one bounded passage from the retry selector.",
+            },
+        ]
+
+    @staticmethod
+    def notion_code_mismatch_evidence():
+        notion = {
+            "id": "notion-retry-policy",
+            "claim_key": "provider_rejection_retry_policy",
+            "claim_value": "explicit_rejections_should_retry_once",
+            "summary": "The current Support process says an explicit provider rejection should receive one bounded retry after refreshing the provider connection.",
+            "source_type": "notion",
+            "safe_reference": "synthetic-notion-retry-policy",
+            "source_date": "2026-07-21",
+            "retrieved_at": "2026-07-22T17:00:00Z",
+            "authority": "authoritative",
+            "claim_supported": "The intended process requires one bounded retry for explicit provider rejections.",
+            "coverage": "Approved Support-profile page; first 20 text blocks; current process section.",
+        }
+        code = [
+            dict(item, claim_key="provider_rejection_retry_policy")
+            for item in InvestigationHarnessTests.code_retry_evidence()
+        ]
+        return notion, code
+
     def test_synthetic_cases_have_exact_ordered_calls_and_no_private_transit(self):
         for case in CASES:
             with self.subTest(case=case["name"]):
@@ -99,3 +168,118 @@ class InvestigationHarnessTests(unittest.TestCase):
         for envelope in ({"outcome": "stopped", "safeError": "arbitrary"}, {"outcome": "resolved", "extra": True}, "stopped:masking_failed"):
             with self.assertRaises(ValueError):
                 run_case(case, {"slack": lambda step, handle, value=envelope: value})
+
+    def test_rich_slack_evidence_survives_into_a_calibrated_nonrepetitive_brief(self):
+        case = {
+            "name": "bakeoff_01_recent_import_workaround",
+            "claims": ["recent_team_context"],
+            "responses": {
+                "slack": [
+                    {
+                        "outcome": "resolved",
+                        "evidence": [self.recent_slack_evidence()],
+                    }
+                ]
+            },
+        }
+        result = run_case(case)
+
+        self.assertEqual([item["source"] for item in result["callTrace"]], ["help_scout_target", "slack"])
+        self.assertEqual(result["claims"][0]["source"], "slack")
+        self.assertEqual(result["evidence"], [self.recent_slack_evidence()])
+        self.assertEqual(result["route"], "Insufficient evidence — abstain")
+        self.assertIn("temporary retry after refreshing the provider connection", result["brief"])
+        self.assertIn("2026-07-20", result["brief"])
+        self.assertIn("30-day window", result["brief"])
+        self.assertIn("supporting", result["brief"])
+        self.assertIn("does not establish policy, deployment, runtime cause, or a confirmed fix", result["brief"])
+        self.assertIn("public_kb: skipped (not_needed_for_named_claim)", result["brief"])
+        coverage_dump = "help_scout_target: checked (target_facts_received); helpscout_history: skipped"
+        self.assertEqual(result["brief"].count(coverage_dump), 0)
+
+    def test_nonresolved_callbacks_cannot_smuggle_evidence(self):
+        case = {"name": "envelope", "claims": ["recent_team_context"], "responses": {}}
+        with self.assertRaises(ValueError):
+            run_case(
+                case,
+                {
+                    "slack": lambda step, handle: {
+                        "outcome": "unresolved",
+                        "evidence": [self.recent_slack_evidence()],
+                    }
+                },
+            )
+
+    def test_code_only_evidence_is_synthesized_but_cannot_claim_deployment_or_a_change(self):
+        case = {
+            "name": "bakeoff_02_code_retry_behavior",
+            "claims": ["implementation_behavior"],
+            "responses": {
+                "code_context": [
+                    {
+                        "outcome": "resolved",
+                        "evidence": self.code_retry_evidence(),
+                    }
+                ]
+            },
+        }
+        result = run_case(case)
+
+        self.assertEqual([item["source"] for item in result["callTrace"]], ["help_scout_target", "code_context"])
+        self.assertEqual(result["claims"][0]["source"], "code_context")
+        self.assertEqual(result["route"], "Insufficient evidence — abstain")
+        self.assertEqual(
+            result["nextStep"],
+            "Ask Engineering to confirm whether the cited behavior is intentional and whether the cited commit is deployed for the affected path",
+        )
+        self.assertIn(
+            "Across the cited commit-pinned passages, the implementation evidence consistently supports that explicit rejections are not automatically retried.",
+            result["brief"],
+        )
+        self.assertIn(
+            "does not establish deployment, runtime cause, design intent, or that a code change is warranted",
+            result["brief"],
+        )
+        self.assertIn(
+            "The deployed commit, runtime path, intended behavior, and whether a change is desirable remain unknown.",
+            result["brief"],
+        )
+        for record in self.code_retry_evidence():
+            self.assertIn(record["safe_reference"], result["brief"])
+
+    def test_notion_code_mismatch_renders_a_structured_finding_and_engineering_handoff(self):
+        notion, code = self.notion_code_mismatch_evidence()
+        case = {
+            "name": "bakeoff_03_intended_process_vs_code",
+            "claims": ["intended_process", "implementation_behavior"],
+            "responses": {
+                "notion": [{"outcome": "resolved", "evidence": [notion]}],
+                "code_context": [{"outcome": "resolved", "evidence": code}],
+            },
+        }
+        result = run_case(case)
+
+        self.assertEqual(
+            [item["source"] for item in result["callTrace"]],
+            ["help_scout_target", "notion", "code_context"],
+        )
+        self.assertEqual(result["findings"][0]["findingType"], "intended_vs_implemented")
+        self.assertEqual(result["findings"][0]["relationship"], "mismatch")
+        self.assertEqual(result["route"], "Likely code change")
+        self.assertEqual(
+            result["nextStep"],
+            "Ask Engineering to verify the deployed commit and reconcile the cited implementation with the authoritative intended process",
+        )
+        self.assertIn(
+            "At the cited commit, implementation appears inconsistent with the intended process.",
+            result["brief"],
+        )
+        self.assertIn(
+            "Notion establishes intended process; code describes implementation at the cited commit. Neither source establishes runtime behavior or deployment.",
+            result["brief"],
+        )
+        self.assertIn(
+            "The deployed commit, runtime path, and correct remediation remain unknown.",
+            result["brief"],
+        )
+        self.assertNotIn("explicit_authority_then_recency", result["brief"])
