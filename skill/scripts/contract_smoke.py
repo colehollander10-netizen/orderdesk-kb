@@ -104,7 +104,7 @@ def check_help_scout_contract() -> None:
         (SKILL / "references" / "help-scout.md").read_text().split()
     )
     for label, text in (("skill", skill_text), ("reference", help_scout_text)):
-        for required in ("helpscout.support-context.typed-facts.v1", "fact-only", "raw Help Scout prose never reaches the model", "technical blocker"):
+        for required in ("helpscout.support-context.typed-facts.v1", "helpscout.support-context.complete-target.v1", "complete target conversation", "fact-only", "raw Help Scout prose never reaches the model", "technical blocker"):
             require(required in text, f"Help Scout contract missing from {label}: {required}")
     for required in ("helpscout.support-correlation.opaque-handle.v1", "opaque-correlation-envelope", "before accepting or passing a correlation handle", "mark correlation unavailable", "prior_case_handling", "Never create, save, or send a Help Scout draft"):
         require(required in help_scout_text or required in skill_text, f"Help Scout correlation contract missing: {required}")
