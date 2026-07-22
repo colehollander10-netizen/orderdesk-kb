@@ -42,6 +42,14 @@ class MultiSourceBriefContractTests(unittest.TestCase):
             "correct remediation",
         ):
             self.assertIn(phrase, skill)
+        for phrase in (
+            "informal Slack context",
+            "authoritative intended process",
+            "runtime outcome",
+            "workaround approval",
+            "process owner for review",
+        ):
+            self.assertIn(phrase, skill)
 
 
 class InvestigationEntrypointContractTests(unittest.TestCase):

@@ -52,6 +52,8 @@ Code-only supporting evidence may establish implementation behavior at the cited
 
 Before rendering a multi-source conclusion, preserve claim roles. Notion may establish intended process, while code may establish implementation at the cited commit. Compare those roles through a structured finding; neither source globally wins. When they differ, state the intent-versus-implementation mismatch, then preserve the deployed commit, runtime path, and correct remediation as separate unknowns. A mismatch may earn **Likely code change** only as an Engineering-review route, never as proof of production cause.
 
+Apply the same role discipline to informal Slack context and authoritative intended process evidence. Slack may establish that a workaround was recently discussed; it does not approve that workaround. When Slack and the owner-backed process differ, state the informal-versus-intended mismatch, preserve runtime outcome and workaround approval as unknowns, follow the authoritative process, and send the workaround to the process owner for review.
+
 **Reply Boundary**
 Customer-reply drafting is outside `/orderdesk`; no customer-facing wording was produced.
 

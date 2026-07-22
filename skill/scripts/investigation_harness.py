@@ -110,6 +110,16 @@ def _route(case: dict, plan: dict, evidence_result: dict, findings: list[dict]) 
     )
     if mismatch:
         return mismatch["route"], mismatch["nextStep"]
+    informal_mismatch = next(
+        (
+            finding
+            for finding in findings
+            if finding["findingType"] == "informal_vs_intended" and finding["relationship"] == "mismatch"
+        ),
+        None,
+    )
+    if informal_mismatch:
+        return informal_mismatch["route"], informal_mismatch["nextStep"]
     if kinds == {"implementation_behavior"}:
         code_evidence = [item for item in evidence_result["evidence"] if item["source_type"] == "code_context"]
         if code_evidence and all(item["authority"] == "supporting" for item in code_evidence):
@@ -167,8 +177,18 @@ def render_brief(plan: dict, evidence_result: dict, findings: list[dict], route:
         ),
         None,
     )
+    informal_mismatch = next(
+        (
+            finding
+            for finding in findings
+            if finding["findingType"] == "informal_vs_intended" and finding["relationship"] == "mismatch"
+        ),
+        None,
+    )
     if mismatch:
         conflicts = "Notion establishes intended process; code describes implementation at the cited commit. Neither source establishes runtime behavior or deployment."
+    elif informal_mismatch:
+        conflicts = "Slack describes a recent informal workaround; Notion establishes the intended process. The informal workaround differs from the authoritative process."
     else:
         conflicts = "; ".join(f"{item['claim_key']}: {', '.join(item['competing_claim_values'])}; refs {', '.join(item['source_ids'])}; {item['reason']}" for item in evidence_result["conflicts"]) or "None."
     similar = "History checked: bounded historical evidence is not current policy." if plan["sourceCoverage"]["helpscout_history"]["status"] == "checked" else "History not checked."
@@ -186,6 +206,12 @@ def render_brief(plan: dict, evidence_result: dict, findings: list[dict], route:
         likely_pattern = f"{intended} {implemented} At the cited commit, implementation appears inconsistent with the intended process."
         evidence_status = "The intended-process and implementation claims are both established within their own source roles; neither source globally wins or proves production behavior."
         unknown = "The deployed commit, runtime path, and correct remediation remain unknown."
+    elif informal_mismatch:
+        informal = " ".join(informal_mismatch["informal"]["statements"])
+        intended = " ".join(informal_mismatch["intended"]["statements"])
+        likely_pattern = f"{informal} {intended} The informal workaround differs from the authoritative process."
+        evidence_status = "Slack is supporting informal context; Notion is authoritative only for the intended process. Neither source establishes the runtime outcome."
+        unknown = "The runtime outcome and whether the workaround is approved remain unknown."
     elif code_only_supporting:
         claim_values = sorted({item["claim_value"].replace("_", " ") for item in evidence_result["evidence"]})
         likely_pattern = f"Across the cited commit-pinned passages, the implementation evidence consistently supports that {'; '.join(claim_values)}."

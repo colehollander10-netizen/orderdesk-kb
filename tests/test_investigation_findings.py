@@ -48,6 +48,37 @@ def evidence_records():
     ]
 
 
+def slack_notion_records():
+    return [
+        {
+            "id": "slack-recent-workaround",
+            "claim_key": "provider_connection_retry_process",
+            "claim_value": "refresh_then_retry_immediately",
+            "summary": "A recent Slack thread recommends refreshing the provider connection and retrying immediately.",
+            "source_type": "slack",
+            "safe_reference": "synthetic-slack-recent-workaround",
+            "source_date": "2026-07-22",
+            "retrieved_at": "2026-07-22T18:00:00Z",
+            "authority": "supporting",
+            "claim_supported": "A recent informal workaround recommends an immediate refresh and retry.",
+            "coverage": "Message-only Slack search, 14-day window, one of at most ten results.",
+        },
+        {
+            "id": "notion-current-retry-process",
+            "claim_key": "provider_connection_retry_process",
+            "claim_value": "verify_connection_then_retry_once",
+            "summary": "The current Support process requires verifying connection state before one bounded retry.",
+            "source_type": "notion",
+            "safe_reference": "synthetic-notion-current-retry-process",
+            "source_date": "2026-07-21",
+            "retrieved_at": "2026-07-22T18:00:00Z",
+            "authority": "authoritative",
+            "claim_supported": "The intended process requires connection verification before one bounded retry.",
+            "coverage": "Approved Support-profile page; owner-backed current process section.",
+        },
+    ]
+
+
 class InvestigationFindingsTests(unittest.TestCase):
     def test_derives_intent_implementation_mismatch_without_global_source_winner(self):
         findings = derive_cross_source_findings(evidence_records())
@@ -89,6 +120,30 @@ class InvestigationFindingsTests(unittest.TestCase):
         self.assertEqual(derive_cross_source_findings(records), [])
         records = evidence_records()
         records[1:] = [dict(item, authority="unknown") for item in records[1:]]
+        self.assertEqual(derive_cross_source_findings(records), [])
+
+    def test_derives_informal_intended_mismatch_with_process_route(self):
+        finding = derive_cross_source_findings(slack_notion_records())[0]
+
+        self.assertEqual(finding["findingType"], "informal_vs_intended")
+        self.assertEqual(finding["claimKey"], "provider_connection_retry_process")
+        self.assertEqual(finding["relationship"], "mismatch")
+        self.assertEqual(finding["informal"]["sourceIds"], ["slack-recent-workaround"])
+        self.assertEqual(finding["intended"]["sourceIds"], ["notion-current-retry-process"])
+        self.assertNotIn("preferredSourceId", finding)
+        self.assertEqual(finding["notEstablished"], ["runtime_outcome", "workaround_approval"])
+        self.assertEqual(finding["route"], "Store configuration / Rule Builder")
+        self.assertEqual(
+            finding["nextStep"],
+            "Follow the authoritative process and send the informal workaround to the process owner for review",
+        )
+
+    def test_informal_intended_finding_requires_supporting_slack_and_authoritative_notion(self):
+        records = slack_notion_records()
+        records[0] = dict(records[0], authority="unknown")
+        self.assertEqual(derive_cross_source_findings(records), [])
+        records = slack_notion_records()
+        records[1] = dict(records[1], authority="supporting")
         self.assertEqual(derive_cross_source_findings(records), [])
 
 

@@ -79,6 +79,36 @@ class InvestigationHarnessTests(unittest.TestCase):
         ]
         return notion, code
 
+    @staticmethod
+    def slack_notion_mismatch_evidence():
+        slack = {
+            "id": "slack-recent-workaround",
+            "claim_key": "provider_connection_retry_process",
+            "claim_value": "refresh_then_retry_immediately",
+            "summary": "A recent Slack thread recommends refreshing the provider connection and retrying immediately.",
+            "source_type": "slack",
+            "safe_reference": "synthetic-slack-recent-workaround",
+            "source_date": "2026-07-22",
+            "retrieved_at": "2026-07-22T18:00:00Z",
+            "authority": "supporting",
+            "claim_supported": "A recent informal workaround recommends an immediate refresh and retry.",
+            "coverage": "Message-only Slack search, 14-day window, one of at most ten results.",
+        }
+        notion = {
+            "id": "notion-current-retry-process",
+            "claim_key": "provider_connection_retry_process",
+            "claim_value": "verify_connection_then_retry_once",
+            "summary": "The current Support process requires verifying connection state before one bounded retry.",
+            "source_type": "notion",
+            "safe_reference": "synthetic-notion-current-retry-process",
+            "source_date": "2026-07-21",
+            "retrieved_at": "2026-07-22T18:00:00Z",
+            "authority": "authoritative",
+            "claim_supported": "The intended process requires connection verification before one bounded retry.",
+            "coverage": "Approved Support-profile page; owner-backed current process section.",
+        }
+        return slack, notion
+
     def test_synthetic_cases_have_exact_ordered_calls_and_no_private_transit(self):
         for case in CASES:
             with self.subTest(case=case["name"]):
@@ -280,6 +310,43 @@ class InvestigationHarnessTests(unittest.TestCase):
         )
         self.assertIn(
             "The deployed commit, runtime path, and correct remediation remain unknown.",
+            result["brief"],
+        )
+        self.assertNotIn("explicit_authority_then_recency", result["brief"])
+
+    def test_slack_notion_mismatch_preserves_roles_and_routes_the_workaround_for_review(self):
+        slack, notion = self.slack_notion_mismatch_evidence()
+        case = {
+            "name": "bakeoff_04_informal_workaround_vs_process",
+            "claims": ["recent_team_context", "intended_process"],
+            "responses": {
+                "slack": [{"outcome": "resolved", "evidence": [slack]}],
+                "notion": [{"outcome": "resolved", "evidence": [notion]}],
+            },
+        }
+        result = run_case(case)
+
+        self.assertEqual(
+            [item["source"] for item in result["callTrace"]],
+            ["help_scout_target", "slack", "notion"],
+        )
+        self.assertEqual(result["findings"][0]["findingType"], "informal_vs_intended")
+        self.assertEqual(result["findings"][0]["relationship"], "mismatch")
+        self.assertEqual(result["route"], "Store configuration / Rule Builder")
+        self.assertEqual(
+            result["nextStep"],
+            "Follow the authoritative process and send the informal workaround to the process owner for review",
+        )
+        self.assertIn(
+            "Slack describes a recent informal workaround; Notion establishes the intended process.",
+            result["brief"],
+        )
+        self.assertIn(
+            "The informal workaround differs from the authoritative process.",
+            result["brief"],
+        )
+        self.assertIn(
+            "The runtime outcome and whether the workaround is approved remain unknown.",
             result["brief"],
         )
         self.assertNotIn("explicit_authority_then_recency", result["brief"])
