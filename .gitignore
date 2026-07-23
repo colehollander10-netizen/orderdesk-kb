@@ -1,6 +1,7 @@
 # The built index is a generated artifact — rebuild with `orderdesk-kb sync`.
 kb.db
 kb.db-*
+kb.db.sync.lock
 *.db
 *.db-wal
 *.db-shm
@@ -12,3 +13,4 @@ __pycache__/
 venv/
 .DS_Store
 /tmp/
+.worktrees/

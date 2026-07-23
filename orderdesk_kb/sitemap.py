@@ -27,7 +27,9 @@ class SitemapEntry:
     lastmod: str
 
 
-def _fetch(url: str) -> str:
+def _fetch(url: str, before_request=None) -> str:
+    if before_request is not None:
+        before_request()
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
         return response.read().decode("utf-8", errors="replace")
@@ -53,11 +55,16 @@ def _entries_from_sitemap(xml: str) -> list[SitemapEntry]:
     return entries
 
 
-def fetch_all_entries(index_url: str = SITEMAP_INDEX) -> list[SitemapEntry]:
+def fetch_all_entries(
+    index_url: str = SITEMAP_INDEX,
+    before_request=None,
+) -> list[SitemapEntry]:
     """Return every article/page URL with its lastmod, de-duplicated by URL."""
-    index_xml = _fetch(index_url)
+    index_xml = _fetch(index_url, before_request=before_request)
     seen: dict[str, SitemapEntry] = {}
     for child in _child_sitemaps(index_xml):
-        for entry in _entries_from_sitemap(_fetch(child)):
+        for entry in _entries_from_sitemap(
+            _fetch(child, before_request=before_request)
+        ):
             seen[entry.url] = entry
     return list(seen.values())

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Order Desk Support"
+  short_description: "Governed ticket investigation and routing"
+  default_prompt: "Use /orderdesk <positive Help Scout ticket number> to run the smallest sufficient governed read-only investigation and return an internal investigation brief."

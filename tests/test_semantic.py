@@ -52,8 +52,9 @@ SHOPIFY_URL = "http://kb/shopify"
 STRIPE_URL = "http://kb/stripe"
 
 
-def make_db():
+def make_db(test_case):
     conn = index_mod.connect(":memory:")
+    test_case.addCleanup(conn.close)
     index_mod.init_schema(conn)
     index_mod.upsert_page(
         conn,
@@ -107,7 +108,7 @@ class BlobTests(unittest.TestCase):
 
 class EmbedMissingTests(unittest.TestCase):
     def test_embeds_all_then_is_idempotent(self):
-        conn = make_db()
+        conn = make_db(self)
         self.assertFalse(index_mod.embeddings_ready(conn))
         self.assertEqual(index_mod.embed_missing(conn, embed_fn=fake_embed), 2)
         self.assertTrue(index_mod.embeddings_ready(conn))
@@ -115,7 +116,7 @@ class EmbedMissingTests(unittest.TestCase):
         self.assertEqual(index_mod.embed_missing(conn, embed_fn=fake_embed), 0)
 
     def test_force_reembeds_everything(self):
-        conn = make_db()
+        conn = make_db(self)
         index_mod.embed_missing(conn, embed_fn=fake_embed)
         self.assertEqual(
             index_mod.embed_missing(conn, embed_fn=fake_embed, force=True), 2
@@ -124,7 +125,7 @@ class EmbedMissingTests(unittest.TestCase):
     def test_resync_drops_stale_vectors(self):
         # The invariant that keeps hybrid search honest: re-crawling a page
         # assigns new section rowids, so its old vectors must go with it.
-        conn = make_db()
+        conn = make_db(self)
         index_mod.embed_missing(conn, embed_fn=fake_embed)
         index_mod.upsert_page(
             conn,
@@ -155,7 +156,7 @@ class EmbedMissingTests(unittest.TestCase):
 
 class SemanticSearchTests(unittest.TestCase):
     def test_finds_meaning_lexical_cannot(self):
-        conn = make_db()
+        conn = make_db(self)
         index_mod.embed_missing(conn, embed_fn=fake_embed)
         # "storefront" appears nowhere in the corpus text, so lexical search
         # comes back empty — but it shares the Shopify axis semantically.
@@ -165,9 +166,11 @@ class SemanticSearchTests(unittest.TestCase):
         )
         self.assertEqual(hits[0].anchor_url, f"{SHOPIFY_URL}#connect")
         self.assertGreater(hits[0].similarity, 0.9)
+        self.assertEqual(hits[0].lastmod, "2026-01-01")
+        self.assertEqual(hits[0].synced_at, "2026-01-01T00:00:00Z")
 
     def test_requires_embeddings(self):
-        conn = make_db()
+        conn = make_db(self)
         with self.assertRaises(RuntimeError):
             index_mod.semantic_search(conn, "anything", embed_fn=fake_embed)
 
@@ -175,7 +178,7 @@ class SemanticSearchTests(unittest.TestCase):
         # If the stored model differs from the current real model, querying
         # would compare across incompatible embedding spaces. The real path
         # (embed_fn=None) must refuse. Simulate by stamping a foreign model.
-        conn = make_db()
+        conn = make_db(self)
         index_mod.embed_missing(conn, embed_fn=fake_embed)
         conn.execute(
             "INSERT OR REPLACE INTO embedding_meta (key, value) "
@@ -188,7 +191,7 @@ class SemanticSearchTests(unittest.TestCase):
 
 class HybridSearchTests(unittest.TestCase):
     def test_agreement_wins(self):
-        conn = make_db()
+        conn = make_db(self)
         index_mod.embed_missing(conn, embed_fn=fake_embed)
         # Shopify section is #1 in BOTH rankers; Stripe at best in one.
         hits = index_mod.hybrid_search(
@@ -205,7 +208,7 @@ class HybridSearchTests(unittest.TestCase):
         # cosine is looked up directly. Use a corpus where the lexical hit is
         # semantically RELATED so the looked-up cosine is provably non-zero
         # (a 0.0 would be ambiguous with the old sentinel).
-        conn = make_db()
+        conn = make_db(self)
         index_mod.embed_missing(conn, embed_fn=fake_embed)
         # "store" is Shopify-axis (both signals point at Shopify); confirm the
         # top hit's similarity is the real cosine, not a sentinel.
@@ -234,7 +237,7 @@ class HybridSearchTests(unittest.TestCase):
         # deliberately a single semantic term: adding a word that happens to
         # appear in the rival doc would inject a contradicting lexical signal,
         # which is a different scenario than "semantic-only".)
-        conn = make_db()
+        conn = make_db(self)
         index_mod.embed_missing(conn, embed_fn=fake_embed)
         self.assertEqual(index_mod.search(conn, "storefront"), [])
         hits = index_mod.hybrid_search(conn, "storefront", embed_fn=fake_embed)

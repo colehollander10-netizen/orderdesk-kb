@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "requiredCapability": "helpscout.support-correlation.opaque-handle.v1",
+  "requiredOutputMode": "opaque-correlation-envelope",
+  "envelope": {"variants": {"available": ["state", "correlationHandle", "lookupKinds"], "not_found": ["state", "lookupKinds"], "unavailable": ["state", "lookupKinds"], "blocked": ["state", "lookupKinds"]}},
+  "safety": {"operationalIdentifiersModelVisible": false, "boundedTimeWindowPrivate": true, "rawTicketProseModelVisible": false, "opaqueHandleTransitOnly": true, "opaqueHandleLogged": false, "opaqueHandlePersisted": false}
+}

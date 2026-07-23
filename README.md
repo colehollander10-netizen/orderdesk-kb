@@ -37,10 +37,12 @@ run offline.
    Reciprocal Rank Fusion — and fall back to pure lexical otherwise. Either
    way: no LLM at query time, no API key, no network.
 
-`sync` is **incremental**: it stores each page's sitemap `lastmod` and skips
-unchanged pages on re-run, so monthly refreshes only fetch what actually
-changed. It also re-embeds just the refreshed pages when the semantic extra is
-installed.
+`sync` is **incremental** and intentionally conservative: it stores each page's
+sitemap `lastmod`, skips unchanged pages on re-run, takes a process lock so two
+refreshes cannot run at once, uses one fetch worker by default, and waits at
+least 2 seconds between every live request, including sitemap discovery and
+page fetches. It also re-embeds just the refreshed pages when the semantic extra
+is installed.
 
 ## Setup
 
@@ -49,7 +51,8 @@ Requires Python ≥ 3.10 (stdlib only) and the `defuddle` CLI:
 ```bash
 npm install -g defuddle-cli      # provides `defuddle`
 git clone <this repo> && cd orderdesk-kb
-./bin/orderdesk-kb sync          # build the index (~3 min, polite crawl)
+./bin/orderdesk-kb sync --limit 25  # smoke-test the crawl before a full refresh
+./bin/orderdesk-kb sync             # build the index (locked, low-rate crawl)
 ```
 
 Or install as a package so `orderdesk-kb` is on your PATH. Use **editable**
@@ -70,14 +73,17 @@ orderdesk-kb embed               # vectorize the index (~30 MB model, one-time d
 ## Usage
 
 ```bash
-orderdesk-kb sync                 # build / refresh the index (incremental)
-orderdesk-kb sync --force         # re-fetch every page
+orderdesk-kb sync                 # build / refresh the index (incremental, locked)
+orderdesk-kb sync --force         # re-fetch every page (rare; higher site load)
 orderdesk-kb sync --limit 12      # quick partial sync (testing)
+orderdesk-kb sync --workers 1 --delay 2.0  # defaults; keep these low
 orderdesk-kb embed                # build/refresh semantic vectors (optional)
 orderdesk-kb embed --force        # re-embed everything (e.g. model change)
 
 orderdesk-kb search "twig custom fields"      # ranked list of passages
 orderdesk-kb ask "how do I connect Shopify"   # single best answer + confidence
+orderdesk-kb triage "customer asks how to split one order across two warehouses"
+                                      # support brief with ranked public-doc evidence
 orderdesk-kb search "..." --mode lexical      # force BM25 only
 orderdesk-kb search "..." --mode semantic     # force vectors only
 orderdesk-kb search "..." --mode hybrid       # force fusion (default when embedded)
@@ -115,10 +121,31 @@ Every command accepts `--json` for structured output. This is deliberate: the
 `search --json` returns `{"mode": ..., "hits": [...]}`; `ask --json` includes
 `confidence`, `mode`, `similarity`, and `sources`.
 
+### Support triage
+
+`triage` is the internship/support workflow command. Give it a sanitized ticket
+summary or workflow question and it returns a compact research brief: confidence,
+recommended next step, public-doc boundary reminder, and ranked source passages
+with deep links. Each source also carries public page/sitemap dates and the local
+fetch timestamp. The fetch timestamp describes cache acquisition only; it does
+not prove that the live page is unchanged.
+
+```bash
+orderdesk-kb --json triage "customer wants to split an order across two warehouses"
+```
+
+Use it before drafting support help or building an automation idea. It does not
+ingest tickets, customer data, internal docs, Slack, or Help Scout; it only
+retrieves from the cached public help docs.
+
 ## Scope & boundaries
 
 - **Public docs only.** Indexes `help.orderdesk.com`. Never touches internal or
   customer data.
+- **Be gentle to the live site.** Query cached results by default. Do not run
+  multiple syncs, background syncs, or parallel agents against the public docs.
+  Keep `--workers` at 1 and avoid lowering `--delay` unless the site owner has
+  explicitly approved it.
 - **No LLM, no API key.** Retrieval is local BM25 + (optionally) local static
   embeddings. Nothing leaves the machine at query time.
 - **`kb.db` is generated** — it's gitignored. Rebuild it with `sync` + `embed`.

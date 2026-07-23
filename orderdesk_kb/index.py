@@ -51,6 +51,12 @@ class Hit:
     text: str
     similarity: float = 0.0  # cosine vs. the query; 0.0 = unknown/lexical-only
     rowid: int = -1          # sections rowid; internal key for rank fusion
+    # Page-level provenance carried through retrieval for support triage.
+    # `lastmod` comes from the public sitemap, `published` from page metadata,
+    # and `synced_at` is only the local fetch/index time.
+    lastmod: str | None = None
+    published: str | None = None
+    synced_at: str | None = None
 
 
 def connect(db_path: Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
@@ -251,14 +257,18 @@ def search(
         rows = conn.execute(
             """
             SELECT
-                rowid,
+                sections.rowid AS rowid,
                 bm25(sections, 0.0, 0.0, 5.0, 3.0, 1.0) AS rank,
-                title,
-                heading_path,
-                anchor_url,
+                sections.title AS title,
+                sections.heading_path AS heading_path,
+                sections.anchor_url AS anchor_url,
                 snippet(sections, 4, '[', ']', ' … ', 12) AS snippet,
-                text
+                sections.text AS text,
+                pages.lastmod AS lastmod,
+                pages.published AS published,
+                pages.synced_at AS synced_at
             FROM sections
+            JOIN pages ON pages.url = sections.url
             WHERE sections MATCH ?
             ORDER BY rank
             LIMIT ?
@@ -276,6 +286,9 @@ def search(
             snippet=row["snippet"],
             text=row["text"],
             rowid=row["rowid"],
+            lastmod=row["lastmod"],
+            published=row["published"],
+            synced_at=row["synced_at"],
         )
         for row in rows
     ]
@@ -416,8 +429,17 @@ def semantic_search(
     for section_id, similarity in top:
         row = conn.execute(
             """
-            SELECT title, heading_path, anchor_url, text
-            FROM sections WHERE rowid = ?
+            SELECT
+                sections.title AS title,
+                sections.heading_path AS heading_path,
+                sections.anchor_url AS anchor_url,
+                sections.text AS text,
+                pages.lastmod AS lastmod,
+                pages.published AS published,
+                pages.synced_at AS synced_at
+            FROM sections
+            JOIN pages ON pages.url = sections.url
+            WHERE sections.rowid = ?
             """,
             (section_id,),
         ).fetchone()
@@ -433,6 +455,9 @@ def semantic_search(
                 text=row["text"],
                 similarity=similarity,
                 rowid=section_id,
+                lastmod=row["lastmod"],
+                published=row["published"],
+                synced_at=row["synced_at"],
             )
         )
     return hits

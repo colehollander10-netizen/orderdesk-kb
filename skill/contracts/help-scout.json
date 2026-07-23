@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "requiredCapability": "helpscout.support-context.typed-facts.v1",
+  "requiredTargetCapabilities": [
+    "helpscout.support-context.complete-target.v1",
+    "helpscout.support-context.masked-target-transcript.v1"
+  ],
+  "requiredOutputMode": "masked-target-transcript-and-typed-history-facts",
+  "requiredSafety": {
+    "rawProseModelVisible": false,
+    "maskedTargetProseModelVisible": true,
+    "internalNotesUsedAsEvidence": false,
+    "attachmentsAccessed": false,
+    "failClosed": true
+  }
+}
