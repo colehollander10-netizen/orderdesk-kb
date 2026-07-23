@@ -3,7 +3,7 @@
   "entrypoint": {"input": "positive_help_scout_ticket_number", "output": "internal_investigation_brief"},
   "replyDrafting": "outside_skill",
   "sources": {
-    "help_scout_target": {"requiredTool": "helpscout_get_support_context", "mandatory": true, "output": "masked_target_transcript", "completeProviderPages": true},
+    "help_scout_target": {"requiredTool": "helpscout_get_support_context", "mandatory": true, "outputModes": ["readable_masked_transcript", "typed_facts_fallback"], "completeProviderPages": true},
     "public_kb": {"claimKinds": ["documented_behavior"], "requiredTool": "public_kb.py"},
     "helpscout_history": {"claimKinds": ["prior_case_handling"], "requiredTool": "helpscout_get_support_context"},
     "slack": {"claimKinds": ["recent_team_context"], "requiredTool": "slack_search"},

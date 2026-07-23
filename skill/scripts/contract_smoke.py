@@ -108,7 +108,7 @@ def check_help_scout_contract() -> None:
         (SKILL / "references" / "help-scout.md").read_text().split()
     )
     for label, text in (("skill", skill_text), ("reference", help_scout_text)):
-        for required in ("helpscout.support-context.typed-facts.v1", "helpscout.support-context.complete-target.v1", "helpscout.support-context.masked-target-transcript.v1", "complete target conversation", "masked", "raw Help Scout prose never reaches the model", "technical blocker"):
+        for required in ("helpscout.support-context.typed-facts.v1", "helpscout.support-context.complete-target.v1", "helpscout.support-context.readable-masked-target.v2", "readable_masked_transcript", "typed_facts_fallback", "complete target conversation", "masked", "raw Help Scout prose never reaches the model", "technical blocker"):
             require(required in text, f"Help Scout contract missing from {label}: {required}")
     for required in ("helpscout.support-correlation.opaque-handle.v1", "opaque-correlation-envelope", "before accepting or passing a correlation handle", "mark correlation unavailable", "prior_case_handling", "Never create, save, or send a Help Scout draft"):
         require(required in help_scout_text or required in skill_text, f"Help Scout correlation contract missing: {required}")
@@ -170,12 +170,19 @@ def check_manifest_contract() -> dict:
     require(
         manifest.get("requiredTargetCapabilities") == [
             "helpscout.support-context.complete-target.v1",
-            "helpscout.support-context.masked-target-transcript.v1",
+            "helpscout.support-context.readable-masked-target.v2",
         ],
         "Help Scout manifest target capabilities mismatch",
     )
     require(
-        manifest.get("requiredOutputMode") == "masked-target-transcript-and-typed-history-facts",
+        manifest.get("requiredTargetOutputModes") == [
+            "readable_masked_transcript",
+            "typed_facts_fallback",
+        ],
+        "Help Scout manifest target output modes mismatch",
+    )
+    require(
+        manifest.get("requiredOutputMode") == "readable-masked-target-or-typed-fallback-and-typed-history-facts",
         "Help Scout manifest output mode mismatch",
     )
     require(
@@ -197,7 +204,7 @@ def check_investigation_manifest() -> dict:
     require(manifest.get("schemaVersion") == 1, "investigation schema mismatch")
     require(manifest.get("entrypoint") == {"input": "positive_help_scout_ticket_number", "output": "internal_investigation_brief"}, "investigation entrypoint mismatch")
     require(manifest.get("replyDrafting") == "outside_skill", "reply drafting boundary mismatch")
-    require(manifest.get("sources") == {"help_scout_target": {"requiredTool": "helpscout_get_support_context", "mandatory": True, "output": "masked_target_transcript", "completeProviderPages": True}, "public_kb": {"claimKinds": ["documented_behavior"], "requiredTool": "public_kb.py"}, "helpscout_history": {"claimKinds": ["prior_case_handling"], "requiredTool": "helpscout_get_support_context"}, "slack": {"claimKinds": ["recent_team_context"], "requiredTool": "slack_search"}, "notion": {"claimKinds": ["intended_process"], "requiredTool": "notion_search"}, "code_context": {"claimKinds": ["implementation_behavior"], "requiredTool": "code_context"}, "s3_logs": {"claimKinds": ["runtime_event"], "requiredTool": "s3_log_lookup", "status": "conditional"}}, "investigation source/tool contract mismatch")
+    require(manifest.get("sources") == {"help_scout_target": {"requiredTool": "helpscout_get_support_context", "mandatory": True, "outputModes": ["readable_masked_transcript", "typed_facts_fallback"], "completeProviderPages": True}, "public_kb": {"claimKinds": ["documented_behavior"], "requiredTool": "public_kb.py"}, "helpscout_history": {"claimKinds": ["prior_case_handling"], "requiredTool": "helpscout_get_support_context"}, "slack": {"claimKinds": ["recent_team_context"], "requiredTool": "slack_search"}, "notion": {"claimKinds": ["intended_process"], "requiredTool": "notion_search"}, "code_context": {"claimKinds": ["implementation_behavior"], "requiredTool": "code_context"}, "s3_logs": {"claimKinds": ["runtime_event"], "requiredTool": "s3_log_lookup", "status": "conditional"}}, "investigation source/tool contract mismatch")
     require(manifest.get("claimSourceRoutes") == {"documented_behavior": ["public_kb"], "prior_case_handling": ["helpscout_history"], "recent_team_context": ["slack"], "intended_process": ["notion"], "implementation_behavior": ["code_context"], "runtime_event": ["s3_logs"]}, "investigation ordered routes mismatch")
     require(manifest.get("runtimePreflight") == {"scope": "whole_product_benchmark", "before": "ticket_selection_or_body_read", "onMismatch": "runtime_contract_mismatch", "contentFree": True}, "runtime preflight mismatch")
     require(manifest.get("replyDrafting") == "outside_skill", "reply drafting boundary mismatch")
@@ -222,6 +229,14 @@ def check_runtime_preflight_manifest() -> list[str]:
     require(
         manifest.get("ordering") == "unordered_exact",
         "runtime preflight ordering mismatch",
+    )
+    target_output_modes = manifest.get("targetOutputModes")
+    require(
+        target_output_modes == [
+            "readable_masked_transcript",
+            "typed_facts_fallback",
+        ],
+        "runtime preflight target output modes mismatch",
     )
     tools = manifest.get("gatewayTools")
     require(
@@ -266,6 +281,11 @@ def check_help_scout_integration(root: Path, manifest: dict) -> None:
     require(
         actual.get("targetCapabilities") == manifest["requiredTargetCapabilities"],
         "Help Scout target capabilities mismatch",
+    )
+    require(
+        actual.get("targetOutputModes")
+        == manifest["requiredTargetOutputModes"],
+        "Help Scout target output modes mismatch",
     )
     require(
         actual.get("outputMode") == manifest["requiredOutputMode"],

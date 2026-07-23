@@ -8,7 +8,7 @@ Ticket-based sanitized support question; one task-scoped governed read-only inve
 
 **What I Checked**
 - Boundary: capability checks, read-only tools, caps, and stop conditions.
-- Help Scout target: checked, unavailable, or stopped - fact capability, target bounds, context state, and retrieval time.
+- Help Scout target: checked, unavailable, or stopped - v2 capability, `readable_masked_transcript` or `typed_facts_fallback`, target bounds, context state, fallback state, and retrieval time. A fallback brief contains no transcript and, during a live canary, is stopped before private-source reads.
 - Help Scout history: checked, planned, skipped, unavailable, or stopped - `prior_case_handling` claim and fixed reason.
 - Public KB: checked, skipped, unavailable, or stopped - query category and cache health.
 - Slack: checked, skipped, unavailable, or stopped - bounded search and retrieval time.

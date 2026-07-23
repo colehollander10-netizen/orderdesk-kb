@@ -9,8 +9,10 @@ A positive ticket-number invocation authorizes only the conditional governed sou
 For a whole-product benchmark, run the exact content-free runtime handshake
 before selecting or opening a ticket. Send one JSON object on standard input
 to `python3 scripts/runtime_preflight.py` with exactly `helpScoutCapabilities`,
-`helpScoutCorrelationOutputMode`, and `gatewayTools` from the connected
-runtimes. `runtime_contract_mismatch` exits nonzero and stops the benchmark
+`helpScoutTargetOutputModes`, `helpScoutCorrelationOutputMode`, and
+`gatewayTools` from the connected runtimes. These are capability names, target
+output modes, correlation output mode, and tool names only.
+`runtime_contract_mismatch` exits nonzero and stops the benchmark
 before Help Scout body intake. Restart in a fresh Codex task/runtime after a
 merge and repeat the handshake; a checkout or static CLI result cannot prove
 the already-running connector surface.

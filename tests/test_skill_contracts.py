@@ -75,10 +75,15 @@ class InvestigationEntrypointContractTests(unittest.TestCase):
 
 
 class HelpScoutContractTests(unittest.TestCase):
-    def test_correlation_and_masked_target_capabilities_are_versioned(self):
+    def test_correlation_and_readable_target_capabilities_are_versioned(self):
+        skill = " ".join(SKILL.read_text().split())
         text = " ".join(HELP_SCOUT.read_text().split())
-        for phrase in ("helpscout.support-context.typed-facts.v1", "helpscout.support-context.complete-target.v1", "helpscout.support-context.masked-target-transcript.v1", "helpscout.support-correlation.opaque-handle.v1", "opaque-correlation-envelope", "before accepting or passing a correlation handle", "correlation candidate", "does not grant an S3 Logs read", "owner-side orchestrator", "mark correlation unavailable", "raw Help Scout prose never reaches the model", "Internal notes and attachments"):
+        for phrase in ("helpscout.support-context.typed-facts.v1", "helpscout.support-context.complete-target.v1", "helpscout.support-context.readable-masked-target.v2", "readable_masked_transcript", "typed_facts_fallback", "helpscout.support-correlation.opaque-handle.v1", "opaque-correlation-envelope", "before accepting or passing a correlation handle", "correlation candidate", "does not grant an S3 Logs read", "owner-side orchestrator", "mark correlation unavailable", "raw Help Scout prose never reaches the model", "Internal notes and attachments"):
             self.assertIn(phrase, text)
+        self.assertIn("normal product output remains readable", text.casefold())
+        self.assertIn("fallback contains no transcript", text.casefold())
+        self.assertIn("typed-facts fallback is quarantine", skill.casefold())
+        self.assertIn("do not open another live ticket", skill.casefold())
 
     def test_whole_product_benchmark_requires_a_content_free_runtime_preflight(self):
         skill = " ".join(SKILL.read_text().split())
@@ -90,11 +95,12 @@ class HelpScoutContractTests(unittest.TestCase):
             self.assertIn("runtime_contract_mismatch", lowered)
             self.assertIn("whole-product benchmark", lowered)
             self.assertIn("before selecting or opening a ticket", lowered)
+            self.assertIn("helpscouttargetoutputmodes", lowered)
             self.assertIn("helpscoutcorrelationoutputmode", lowered)
             self.assertIn("standard input", lowered)
         self.assertIn("fresh Codex task/runtime", skill)
         self.assertIn(
-            "capability names, correlation output mode, and tool names only",
+            "capability names, target output modes, correlation output mode, and tool names only",
             help_scout,
         )
         self.assertIn(
@@ -106,6 +112,18 @@ class HelpScoutContractTests(unittest.TestCase):
         manifest = json.loads((ROOT / "skill" / "contracts" / "investigation.json").read_text())
         self.assertEqual(manifest["replyDrafting"], "outside_skill")
         self.assertEqual(set(manifest["sources"]), {"help_scout_target", "helpscout_history", "public_kb", "slack", "notion", "code_context", "s3_logs"})
+        self.assertEqual(
+            manifest["sources"]["help_scout_target"],
+            {
+                "requiredTool": "helpscout_get_support_context",
+                "mandatory": True,
+                "outputModes": [
+                    "readable_masked_transcript",
+                    "typed_facts_fallback",
+                ],
+                "completeProviderPages": True,
+            },
+        )
         self.assertEqual(
             manifest["sources"]["s3_logs"],
             {
