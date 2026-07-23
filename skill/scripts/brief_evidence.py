@@ -26,7 +26,7 @@ AUTHORITY_RANK = {
     "authoritative": 3,
 }
 
-SOURCE_TYPES = {"help_scout", "public_kb", "slack", "notion", "code_context", "aws_logs"}
+SOURCE_TYPES = {"help_scout", "public_kb", "slack", "notion", "code_context", "s3_logs"}
 
 REQUIRED_FIELDS = {
     "id",

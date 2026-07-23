@@ -123,10 +123,10 @@ class BriefEvidenceContractTests(unittest.TestCase):
         self.assertIn("Repetition is not a vote", template)
 
     def test_every_governed_source_type_is_accepted(self):
-        records = [evidence_record(f"source_{index}", "supported", source_type=source_type) | {"claim_key": f"claim_{index}"} for index, source_type in enumerate(("help_scout", "public_kb", "slack", "notion", "code_context", "aws_logs"), start=1)]
+        records = [evidence_record(f"source_{index}", "supported", source_type=source_type) | {"claim_key": f"claim_{index}"} for index, source_type in enumerate(("help_scout", "public_kb", "slack", "notion", "code_context", "s3_logs"), start=1)]
         result = self.run_fixture({"evidence": records})
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual({item["source_type"] for item in json.loads(result.stdout)["evidence"]}, {"help_scout", "public_kb", "slack", "notion", "code_context", "aws_logs"})
+        self.assertEqual({item["source_type"] for item in json.loads(result.stdout)["evidence"]}, {"help_scout", "public_kb", "slack", "notion", "code_context", "s3_logs"})
 
     def test_zero_evidence_coverage_only_abstention_is_valid(self):
         coverage = {
@@ -136,14 +136,14 @@ class BriefEvidenceContractTests(unittest.TestCase):
             "slack": {"status": "skipped", "reason": "safe_query_unavailable"},
             "notion": {"status": "skipped", "reason": "safe_query_unavailable"},
             "code_context": {"status": "skipped", "reason": "safe_query_unavailable"},
-            "aws_logs": {"status": "unavailable", "reason": "correlation_unavailable"},
+            "s3_logs": {"status": "skipped", "reason": "log_contract_unavailable"},
         }
         completed = self.run_fixture({"evidence": [], "sourceCoverage": coverage})
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(json.loads(completed.stdout)["sourceCoverage"], coverage)
 
     def test_source_coverage_rejects_extra_fields_and_unknown_reasons(self):
-        coverage = {source: {"status": "skipped", "reason": "not_needed_for_named_claim"} for source in ("help_scout_target", "helpscout_history", "public_kb", "slack", "notion", "code_context", "aws_logs")}
+        coverage = {source: {"status": "skipped", "reason": "not_needed_for_named_claim"} for source in ("help_scout_target", "helpscout_history", "public_kb", "slack", "notion", "code_context", "s3_logs")}
         coverage["help_scout_target"] = {"status": "checked", "reason": "target_facts_received", "detail": "forbidden"}
         completed = self.run_fixture({"evidence": [], "sourceCoverage": coverage})
         self.assertNotEqual(completed.returncode, 0)

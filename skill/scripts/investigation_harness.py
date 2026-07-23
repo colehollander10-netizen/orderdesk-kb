@@ -15,7 +15,7 @@ SOURCE_TYPE = {
     "slack": "slack",
     "notion": "notion",
     "code_context": "code_context",
-    "aws_logs": "aws_logs",
+    "s3_logs": "s3_logs",
 }
 AUTHORITY = {
     "helpscout_history": "historical",
@@ -23,9 +23,8 @@ AUTHORITY = {
     "slack": "supporting",
     "notion": "authoritative",
     "code_context": "supporting",
-    "aws_logs": "supporting",
+    "s3_logs": "supporting",
 }
-_SYNTHETIC_AWS_TRANSIT = object()
 
 
 def _callback_envelope(value: object) -> dict[str, Any]:
@@ -62,7 +61,7 @@ def expand_case_input(case: dict) -> dict:
         "sanitizedQuestion": {"productArea": "order_import", "workflow": "provider_to_order_desk", "observedBehavior": "orders_delayed", "expectedBehavior": "orders_imported", "safeTerms": ["order import", "delay"]},
         "safeFacts": [],
         "missingEvidence": claims,
-        "capabilities": {"helpscout_history": True, "public_kb": True, "slack": True, "notion": True, "code_context": True, "aws_logs": True},
+        "capabilities": {"helpscout_history": True, "public_kb": True, "slack": True, "notion": True, "code_context": True, "s3_logs": True},
         "correlationAvailable": bool(case.get("correlationAvailable")),
         "enabledLogKinds": enabled,
         "hardStopError": None,
@@ -97,7 +96,7 @@ def synthetic_evidence(case: dict, step: dict, outcome: str) -> list[dict]:
 def _route(case: dict, plan: dict, evidence_result: dict, findings: list[dict]) -> tuple[str, str]:
     if plan["status"] != "complete":
         if case["name"] == "runtime_without_schema":
-            return "Insufficient evidence — abstain", "Hand off to the AWS log-contract owner"
+            return "Insufficient evidence — abstain", "Hand off to the S3 Logs contract owner"
         return "Insufficient evidence — abstain", "Obtain the smallest missing governed fact"
     kinds = set(case["claims"])
     mismatch = next(
@@ -120,12 +119,16 @@ def _route(case: dict, plan: dict, evidence_result: dict, findings: list[dict]) 
     )
     if informal_mismatch:
         return informal_mismatch["route"], informal_mismatch["nextStep"]
-    if kinds == {"implementation_behavior"}:
+    if "implementation_behavior" in kinds and not ({"intended_process", "runtime_event"} & kinds):
         code_evidence = [item for item in evidence_result["evidence"] if item["source_type"] == "code_context"]
         if code_evidence and all(item["authority"] == "supporting" for item in code_evidence):
             return (
                 "Insufficient evidence — abstain",
-                "Ask Engineering to confirm whether the cited behavior is intentional and whether the cited commit is deployed for the affected path",
+                (
+                    "Ask Engineering to confirm whether the cited behavior is intentional and whether the cited commit is deployed for the affected path"
+                    if kinds == {"implementation_behavior"}
+                    else "Verify the implementation evidence against an authoritative process source or runtime evidence, then ask Engineering whether the cited commit is deployed for the affected path"
+                ),
             )
     if "implementation_behavior" in kinds:
         return "Likely code change", "Hand off the cited implementation evidence"
@@ -251,25 +254,17 @@ def run_case(case: dict, tool_runner: dict[str, Callable[..., dict]] | None = No
     responses = {source: list(tokens) for source, tokens in case.get("responses", {}).items()}
     trace = [{"source": "help_scout_target", "claimId": None, "outcome": "checked", "handleTransit": False}]
     evidence: list[dict] = []
-    aws_transit_available = True
     plan = plan_investigation(state)
     while plan["status"] == "running":
         for step in plan["steps"]:
             source = step["source"]
-            if source == "aws_logs" and not aws_transit_available:
-                state["correlationAvailable"] = False
-                plan = plan_investigation(state)
-                break
             if tool_runner and source in tool_runner:
-                envelope = tool_runner[source](step, _SYNTHETIC_AWS_TRANSIT if source == "aws_logs" else None)
+                envelope = tool_runner[source](step, None)
             else:
                 envelope = responses[source].pop(0)
             envelope = _callback_envelope(envelope)
             outcome = envelope["outcome"]
-            handle_transit = source == "aws_logs"
-            if handle_transit and not case.get("correlationAvailable"):
-                raise ValueError("AWS stub requires correlation availability")
-            trace.append({"source": source, "claimId": step["claimId"], "outcome": outcome, "handleTransit": handle_transit})
+            trace.append({"source": source, "claimId": step["claimId"], "outcome": outcome, "handleTransit": False})
             if outcome == "stopped":
                 stopped = stopped_plan(state, envelope["safeError"])
                 return {
@@ -281,11 +276,6 @@ def run_case(case: dict, tool_runner: dict[str, Callable[..., dict]] | None = No
             evidence.extend(envelope.get("evidence", synthetic_evidence(case, step, outcome)))
             plan = merge_source_result(state, {"claimId": step["claimId"], "source": source, "outcome": outcome})
             state = plan["planningState"]
-            if source == "aws_logs":
-                aws_transit_available = False
-                state["correlationAvailable"] = False
-                plan = plan_investigation(state)
-                break
         if plan["status"] == "stopped":
             break
         if plan["status"] == "running":

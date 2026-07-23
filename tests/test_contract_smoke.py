@@ -93,16 +93,18 @@ class ContractSmokePortabilityTests(unittest.TestCase):
             contract = {
                 "schemaVersion": 1,
                 "capability": "helpscout.support-context.typed-facts.v1",
-                "outputMode": "typed-facts",
+                "targetCapabilities": [
+                    "helpscout.support-context.complete-target.v1",
+                    "helpscout.support-context.masked-target-transcript.v1",
+                ],
+                "outputMode": "masked-target-transcript-and-typed-history-facts",
                 "safety": {
                     "rawProseModelVisible": False,
+                    "maskedTargetProseModelVisible": True,
                     "internalNotesUsedAsEvidence": False,
                     "attachmentsAccessed": False,
                     "failClosed": True,
                 },
-                "correlationCapability": "helpscout.support-correlation.opaque-handle.v1",
-                "correlationOutputMode": "opaque-correlation-envelope",
-                "correlationEnvelope": {"variants": {"available": ["state", "correlationHandle", "lookupKinds"], "not_found": ["state", "lookupKinds"], "unavailable": ["state", "lookupKinds"]}},
             }
             executable.write_text(
                 "#!/usr/bin/env python3\n"
@@ -144,17 +146,17 @@ class ContractSmokePortabilityTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 1)
         self.assertIn("capability mismatch", completed.stderr)
 
-    def test_opt_in_help_scout_contract_rejects_correlation_mismatch(self):
+    def test_opt_in_help_scout_contract_rejects_incomplete_target_capability_set(self):
         with tempfile.TemporaryDirectory() as directory:
             skill = self.make_clean_skill_copy(directory)
             connector = Path(directory) / "help-scout-mcp"
             executable = connector / "bin" / "help-scout-mcp.js"
             executable.parent.mkdir(parents=True)
-            executable.write_text("#!/usr/bin/env python3\nimport json\nprint(json.dumps({'schemaVersion': 1, 'capability': 'helpscout.support-context.typed-facts.v1', 'outputMode': 'typed-facts', 'safety': {'rawProseModelVisible': False, 'internalNotesUsedAsEvidence': False, 'attachmentsAccessed': False, 'failClosed': True}, 'correlationCapability': 'wrong', 'correlationOutputMode': 'opaque-correlation-envelope'}))\n", encoding="utf-8")
+            executable.write_text("#!/usr/bin/env python3\nimport json\nprint(json.dumps({'schemaVersion': 1, 'capability': 'helpscout.support-context.typed-facts.v1', 'targetCapabilities': ['helpscout.support-context.masked-target-transcript.v1'], 'outputMode': 'masked-target-transcript-and-typed-history-facts', 'safety': {'rawProseModelVisible': False, 'maskedTargetProseModelVisible': True, 'internalNotesUsedAsEvidence': False, 'attachmentsAccessed': False, 'failClosed': True}}))\n", encoding="utf-8")
             executable.chmod(0o755)
             completed = self.run_smoke(skill, "--help-scout-root", str(connector))
         self.assertEqual(completed.returncode, 1)
-        self.assertIn("Help Scout correlation capability mismatch", completed.stderr)
+        self.assertIn("Help Scout target capabilities mismatch", completed.stderr)
 
 
 if __name__ == "__main__":

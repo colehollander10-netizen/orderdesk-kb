@@ -116,7 +116,7 @@ class InvestigationHarnessTests(unittest.TestCase):
                 self.assertEqual([item["source"] for item in result["callTrace"]], case["expectedTrace"])
                 self.assertEqual(result["plan"]["status"], case["expectedStatus"])
                 self.assertEqual(result["route"], case["expectedRoute"])
-                self.assertEqual(set(result["sourceCoverage"]), {"help_scout_target", "helpscout_history", "public_kb", "slack", "notion", "code_context", "aws_logs"})
+                self.assertEqual(set(result["sourceCoverage"]), {"help_scout_target", "helpscout_history", "public_kb", "slack", "notion", "code_context", "s3_logs"})
                 self.assertEqual(result["claims"], result["plan"]["claimDispositions"])
                 if result["plan"]["status"] != "stopped":
                     self.assertIn("**Reply Boundary**", result["brief"])
@@ -126,22 +126,22 @@ class InvestigationHarnessTests(unittest.TestCase):
                 for forbidden in ("rawtickettext", "correlationhandle", "opaque-test-handle", "credential"):
                     self.assertNotIn(forbidden, json.dumps(result).casefold())
 
-    def test_only_aws_receives_handle_transit(self):
-        case = next(item for item in CASES if item["name"] == "target_aws_and_code")
-        trace = run_case(case)["callTrace"]
-        self.assertEqual([item["source"] for item in trace if item["handleTransit"]], ["aws_logs"])
+    def test_unavailable_s3_logs_never_runs_a_callback_or_transits_a_handle(self):
+        calls = []
 
-    def test_aws_gets_private_object_once_and_second_runtime_claim_is_skipped(self):
-        received = []
-        def aws(step, handle):
-            received.append(handle)
+        def s3_logs(step, handle):
+            calls.append((step, handle))
             return {"outcome": "resolved"}
-        case = {"name": "two_runtime", "claims": ["runtime_event", "runtime_event"], "correlationAvailable": True, "responses": {}}
-        result = run_case(case, {"aws_logs": aws})
-        self.assertEqual(len(received), 1)
-        self.assertIsNotNone(received[0])
-        self.assertEqual([item["source"] for item in result["callTrace"] if item["handleTransit"]], ["aws_logs"])
-        self.assertIn("correlation_unavailable", [item["reason"] for item in result["claims"]])
+
+        case = next(item for item in CASES if item["name"] == "target_s3_unavailable_and_code")
+        result = run_case(case, {"s3_logs": s3_logs})
+
+        self.assertEqual(calls, [])
+        self.assertFalse(any(item["handleTransit"] for item in result["callTrace"]))
+        self.assertEqual(
+            result["sourceCoverage"]["s3_logs"],
+            {"status": "skipped", "reason": "log_contract_unavailable"},
+        )
 
     def test_conflicts_preserve_authority_and_freshness(self):
         for name in ("slack_notion_conflict", "history_current_policy_conflict"):
@@ -163,8 +163,8 @@ class InvestigationHarnessTests(unittest.TestCase):
 
     def test_missing_schema_and_hard_stop_never_continue_private_calls_or_render(self):
         missing_schema = run_case(next(item for item in CASES if item["name"] == "runtime_without_schema"))
-        self.assertEqual(missing_schema["plan"]["sourceCoverage"]["aws_logs"], {"status": "skipped", "reason": "log_contract_unavailable"})
-        self.assertEqual(missing_schema["nextStep"], "Hand off to the AWS log-contract owner")
+        self.assertEqual(missing_schema["plan"]["sourceCoverage"]["s3_logs"], {"status": "skipped", "reason": "log_contract_unavailable"})
+        self.assertEqual(missing_schema["nextStep"], "Hand off to the S3 Logs contract owner")
         stopped = run_case({"name": "masking_hard_stop", "claims": ["recent_team_context"], "responses": {"slack": [{"outcome": "stopped", "safeError": "masking_failed"}]}})
         self.assertEqual(stopped["plan"]["status"], "stopped")
         self.assertTrue(all(item["status"] == "stopped" for item in stopped["sourceCoverage"].values()))
@@ -276,6 +276,35 @@ class InvestigationHarnessTests(unittest.TestCase):
         )
         for record in self.code_retry_evidence():
             self.assertIn(record["safe_reference"], result["brief"])
+
+    def test_code_and_slack_supporting_evidence_cannot_route_to_a_code_change(self):
+        case = {
+            "name": "bakeoff_code_and_slack_supporting",
+            "claims": ["implementation_behavior", "recent_team_context"],
+            "responses": {
+                "code_context": [
+                    {
+                        "outcome": "resolved",
+                        "evidence": self.code_retry_evidence(),
+                    }
+                ],
+                "slack": [
+                    {
+                        "outcome": "resolved",
+                        "evidence": [self.recent_slack_evidence()],
+                    }
+                ],
+            },
+        }
+
+        result = run_case(case)
+
+        self.assertEqual(
+            [item["source"] for item in result["callTrace"]],
+            ["help_scout_target", "code_context", "slack"],
+        )
+        self.assertEqual(result["route"], "Insufficient evidence — abstain")
+        self.assertIn("authoritative process source or runtime evidence", result["nextStep"])
 
     def test_notion_code_mismatch_renders_a_structured_finding_and_engineering_handoff(self):
         notion, code = self.notion_code_mismatch_evidence()

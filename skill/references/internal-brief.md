@@ -14,7 +14,7 @@ Ticket-based sanitized support question; one task-scoped governed read-only inve
 - Slack: checked, skipped, unavailable, or stopped - bounded search and retrieval time.
 - Notion: checked, skipped, unavailable, or stopped - title query and retrieval time.
 - Code context: checked, skipped, unavailable, or stopped - repository, path, line, immutable commit, and retrieval time.
-- AWS logs: checked, skipped, unavailable, or stopped - lookup kind, schema version, event count, and retrieval time.
+- S3 Logs: skipped, unavailable, or stopped - current tool availability and fixed reason; never imply retrieval occurred.
 
 **Coverage and Freshness**
 - Public KB freshness: health checked at; newest and oldest `fetched_at`; cache acquisition does not prove the live page is unchanged; or not checked.

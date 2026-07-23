@@ -17,15 +17,16 @@ class MultiSourceBriefContractTests(unittest.TestCase):
         for phrase in ("`slack_search`", "`recent_team_context`", "safe product, provider, behavior, workflow, rule, or error-family terms", "files and attachments remain withheld", "no match within the bounded search", "not a comprehensive Slack absence", "Slack-only supporting evidence does not establish policy, deployment, runtime cause, or a confirmed fix"):
             self.assertIn(phrase, governed)
 
-    def test_code_context_and_aws_are_governed(self):
+    def test_code_context_and_s3_logs_are_governed_without_advertising_a_tool(self):
         governed = " ".join(GOVERNED_CONTEXT.read_text().split())
-        for phrase in ("`code_context`", "repository, path, line, and immutable commit", "approved default-branch snapshot", "does not prove deployment", "Code-only supporting evidence does not establish deployment, runtime cause, design intent, or that a code change is warranted", "`aws_log_lookup`", "`runtime_event`", "correlation availability", "schema-specific capability", "generic S3 browsing is forbidden", "raw log lines never reach the model"):
+        for phrase in ("`code_context`", "repository, path, line, and immutable commit", "approved default-branch snapshot", "does not prove deployment", "Code-only supporting evidence does not establish deployment, runtime cause, design intent, or that a code change is warranted", "`s3_log_lookup` is not yet available", "`runtime_event`", "concrete unresolved runtime-event claim", "bounded time window", "S3 API", "generic S3 browsing is forbidden", "raw log lines never reach the model"):
             self.assertIn(phrase, governed)
+        self.assertNotIn("aws_log_lookup", governed)
 
     def test_brief_records_plan_and_complete_source_disposition(self):
         template = INTERNAL_BRIEF.read_text()
         self.assertIn("**Investigation Plan**", template)
-        for source in ("Help Scout target", "Help Scout history", "Public KB", "Slack", "Notion", "Code context", "AWS logs"):
+        for source in ("Help Scout target", "Help Scout history", "Public KB", "Slack", "Notion", "Code context", "S3 Logs"):
             self.assertIn(f"- {source}:", template)
         self.assertIn("checked, planned, skipped, unavailable, or stopped", template)
         self.assertIn("retrieval time", template)
@@ -74,12 +75,20 @@ class InvestigationEntrypointContractTests(unittest.TestCase):
 
 
 class HelpScoutContractTests(unittest.TestCase):
-    def test_correlation_capability_is_versioned_and_fact_only(self):
+    def test_correlation_and_masked_target_capabilities_are_versioned(self):
         text = " ".join(HELP_SCOUT.read_text().split())
-        for phrase in ("helpscout.support-context.typed-facts.v1", "helpscout.support-correlation.opaque-handle.v1", "opaque-correlation-envelope", "before accepting or passing a correlation handle", "mark correlation unavailable", "raw Help Scout prose never reaches the model", "internal notes and attachments are ignored"):
+        for phrase in ("helpscout.support-context.typed-facts.v1", "helpscout.support-context.masked-target-transcript.v1", "helpscout.support-correlation.opaque-handle.v1", "opaque-correlation-envelope", "before accepting or passing a correlation handle", "mark correlation unavailable", "raw Help Scout prose never reaches the model", "Internal notes and attachments"):
             self.assertIn(phrase, text)
 
     def test_investigation_manifest_is_closed(self):
         manifest = json.loads((ROOT / "skill" / "contracts" / "investigation.json").read_text())
         self.assertEqual(manifest["replyDrafting"], "outside_skill")
-        self.assertEqual(set(manifest["sources"]), {"help_scout_target", "helpscout_history", "public_kb", "slack", "notion", "code_context", "aws_logs"})
+        self.assertEqual(set(manifest["sources"]), {"help_scout_target", "helpscout_history", "public_kb", "slack", "notion", "code_context", "s3_logs"})
+        self.assertEqual(
+            manifest["sources"]["s3_logs"],
+            {
+                "claimKinds": ["runtime_event"],
+                "requiredTool": None,
+                "status": "planned_unavailable",
+            },
+        )

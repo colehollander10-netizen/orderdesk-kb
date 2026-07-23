@@ -13,7 +13,7 @@ SOURCE_NAMES = (
     "slack",
     "notion",
     "code_context",
-    "aws_logs",
+    "s3_logs",
 )
 CLAIM_SOURCE_ROUTES = {
     "documented_behavior": ("public_kb",),
@@ -21,8 +21,9 @@ CLAIM_SOURCE_ROUTES = {
     "recent_team_context": ("slack",),
     "intended_process": ("notion",),
     "implementation_behavior": ("code_context",),
-    "runtime_event": ("aws_logs",),
+    "runtime_event": ("s3_logs",),
 }
+S3_LOGS_CALLABLE = False
 LOG_LOOKUP_KINDS = {
     "fulfillment_submission",
     "order_import",
@@ -220,17 +221,20 @@ def plan_claim(data: dict, claim: dict) -> tuple[dict, dict | None]:
     for source in routes:
         if source in attempted:
             continue
+        if source == "s3_logs" and not S3_LOGS_CALLABLE:
+            skipped.append({"source": source, "reason": "log_contract_unavailable"})
+            continue
         if not data["capabilities"][source]:
             skipped.append({"source": source, "reason": "capability_unavailable"})
             continue
-        if source == "aws_logs" and not data["correlationAvailable"]:
+        if source == "s3_logs" and not data["correlationAvailable"]:
             skipped.append({"source": source, "reason": "correlation_unavailable"})
             continue
-        if source == "aws_logs" and claim["logLookupKind"] not in data["enabledLogKinds"]:
+        if source == "s3_logs" and claim["logLookupKind"] not in data["enabledLogKinds"]:
             skipped.append({"source": source, "reason": "log_contract_unavailable"})
             continue
         step = {"claimId": claim["id"], "claimKind": claim["kind"], "source": source}
-        if source == "aws_logs":
+        if source == "s3_logs":
             step["logLookupKind"] = claim["logLookupKind"]
         return _disposition(claim, "planned", source, "next_eligible_source", skipped), step
     last = claim["attempts"][-1] if claim["attempts"] else None
