@@ -54,16 +54,27 @@ def expand_case_input(case: dict) -> dict:
             record["logLookupKind"] = "order_import"
         claims.append(record)
     has_runtime = "runtime_event" in case["claims"]
-    enabled = case.get("enabledLogKinds", ["order_import"] if has_runtime else [])
+    default_eligibility = {
+        "trustedCorrelation": has_runtime,
+        "boundedTimeWindow": has_runtime,
+        "materiallyChangesRoute": has_runtime,
+        "lookupKinds": ["order_import"] if has_runtime else [],
+    }
     return {
         "ticketNumber": 11000,
         "targetContextState": "full",
         "sanitizedQuestion": {"productArea": "order_import", "workflow": "provider_to_order_desk", "observedBehavior": "orders_delayed", "expectedBehavior": "orders_imported", "safeTerms": ["order import", "delay"]},
         "safeFacts": [],
         "missingEvidence": claims,
-        "capabilities": {"helpscout_history": True, "public_kb": True, "slack": True, "notion": True, "code_context": True, "s3_logs": True},
-        "correlationAvailable": bool(case.get("correlationAvailable")),
-        "enabledLogKinds": enabled,
+        "capabilities": {
+            "helpscout_history": True,
+            "public_kb": True,
+            "slack": True,
+            "notion": True,
+            "code_context": True,
+            "s3_logs": case.get("s3LogsCallable", True),
+        },
+        "s3LogEligibility": case.get("s3LogEligibility", default_eligibility),
         "hardStopError": None,
     }
 
@@ -134,6 +145,11 @@ def _route(case: dict, plan: dict, evidence_result: dict, findings: list[dict]) 
         return "Likely code change", "Hand off the cited implementation evidence"
     if "intended_process" in kinds:
         return "Store configuration / Rule Builder", "Apply the current intended process"
+    if kinds == {"runtime_event"}:
+        return (
+            "Logs or runtime investigation",
+            "Hand off the minimized S3 Logs finding and the separate human-only evidence artifact",
+        )
     if kinds == {"recent_team_context"}:
         slack_evidence = [item for item in evidence_result["evidence"] if item["source_type"] == "slack"]
         if slack_evidence and all(item["authority"] == "supporting" for item in slack_evidence):
@@ -251,6 +267,7 @@ def render_brief(plan: dict, evidence_result: dict, findings: list[dict], route:
 def run_case(case: dict, tool_runner: dict[str, Callable[..., dict]] | None = None) -> dict:
     """Run injected callbacks only; it never opens a connector or serializes a handle."""
     state = expand_case_input(case)
+    private_correlation_handle = "opaque-test-handle"
     responses = {source: list(tokens) for source, tokens in case.get("responses", {}).items()}
     trace = [{"source": "help_scout_target", "claimId": None, "outcome": "checked", "handleTransit": False}]
     evidence: list[dict] = []
@@ -258,13 +275,19 @@ def run_case(case: dict, tool_runner: dict[str, Callable[..., dict]] | None = No
     while plan["status"] == "running":
         for step in plan["steps"]:
             source = step["source"]
+            handle = private_correlation_handle if source == "s3_logs" else None
             if tool_runner and source in tool_runner:
-                envelope = tool_runner[source](step, None)
+                envelope = tool_runner[source](step, handle)
             else:
                 envelope = responses[source].pop(0)
             envelope = _callback_envelope(envelope)
             outcome = envelope["outcome"]
-            trace.append({"source": source, "claimId": step["claimId"], "outcome": outcome, "handleTransit": False})
+            trace.append({
+                "source": source,
+                "claimId": step["claimId"],
+                "outcome": outcome,
+                "handleTransit": source == "s3_logs",
+            })
             if outcome == "stopped":
                 stopped = stopped_plan(state, envelope["safeError"])
                 return {

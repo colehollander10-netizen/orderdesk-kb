@@ -9,12 +9,12 @@
     "slack": {"claimKinds": ["recent_team_context"], "requiredTool": "slack_search"},
     "notion": {"claimKinds": ["intended_process"], "requiredTool": "notion_search"},
     "code_context": {"claimKinds": ["implementation_behavior"], "requiredTool": "code_context"},
-    "s3_logs": {"claimKinds": ["runtime_event"], "requiredTool": null, "status": "planned_unavailable"}
+    "s3_logs": {"claimKinds": ["runtime_event"], "requiredTool": "s3_log_lookup", "status": "conditional"}
   },
   "claimSourceRoutes": {"documented_behavior": ["public_kb"], "prior_case_handling": ["helpscout_history"], "recent_team_context": ["slack"], "intended_process": ["notion"], "implementation_behavior": ["code_context"], "runtime_event": ["s3_logs"]},
   "claimDerivation": {"question": [{"productArea": "order_import", "workflow": "provider_to_order_desk", "observedBehavior": "orders_delayed", "expectedBehavior": "orders_imported", "claimKinds": ["implementation_behavior", "recent_team_context", "runtime_event"], "logLookupKind": "order_import"}], "safeFact": {"key": "missing_evidence_code", "values": {"documented_behavior": "documented_behavior", "prior_case_handling": "prior_case_handling", "recent_team_context": "recent_team_context", "intended_process": "intended_process", "implementation_behavior": "implementation_behavior", "runtime_order_import": "runtime_event"}}},
   "routes": ["Support can answer", "Store configuration / Rule Builder", "Logs or runtime investigation", "Likely code change", "Manual admin action / product gap", "Insufficient evidence — abstain"],
   "requiredBriefSections": ["Question / Scope", "Investigation Plan", "What I Checked", "Coverage and Freshness", "Route", "Source Ledger", "Evidence Status", "Likely Pattern", "Similar Tickets", "Conflicts", "Unknowns", "Public KB Links", "Suggested Next Step", "Reply Boundary"],
   "stopErrors": ["support_context_blocked", "policy_denied", "scope_denied", "unsafe_query", "masking_failed", "audit_failed", "handle_integrity_failed", "credential_boundary_failed"],
-  "safety": {"governedToolsOnly": true, "rawPrivateContentModelVisible": false, "operationalIdentifiersModelVisible": false, "opaqueHandleTransitOnly": true, "opaqueHandlesFinalBriefVisible": false, "privateSourceSubagents": false, "writesAllowed": false, "genericLogBrowsingAllowed": false}
+  "safety": {"governedToolsOnly": true, "rawPrivateContentModelVisible": false, "operationalIdentifiersModelVisible": false, "opaqueHandleTransitOnly": true, "opaqueHandlesFinalBriefVisible": false, "rawLogLinesModelVisible": false, "humanOnlyExactLogEvidenceSeparate": true, "privateSourceSubagents": false, "writesAllowed": false, "genericLogBrowsingAllowed": false}
 }

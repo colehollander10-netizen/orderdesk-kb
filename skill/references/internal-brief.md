@@ -14,7 +14,7 @@ Ticket-based sanitized support question; one task-scoped governed read-only inve
 - Slack: checked, skipped, unavailable, or stopped - bounded search and retrieval time.
 - Notion: checked, skipped, unavailable, or stopped - title query and retrieval time.
 - Code context: checked, skipped, unavailable, or stopped - repository, path, line, immutable commit, and retrieval time.
-- S3 Logs: skipped, unavailable, or stopped - current tool availability and fixed reason; never imply retrieval occurred.
+- S3 Logs: checked, planned, skipped, unavailable, or stopped - closed eligibility result, minimized masked coverage, retrieval time, or exact failure reason; never imply retrieval occurred when it did not.
 
 **Coverage and Freshness**
 - Public KB freshness: health checked at; newest and oldest `fetched_at`; cache acquisition does not prove the live page is unchanged; or not checked.
@@ -52,4 +52,4 @@ One investigation step, named owner handoff, or focused non-identifying question
 **Reply Boundary**
 Customer-reply drafting is outside `/orderdesk`; no customer-facing wording was produced.
 
-Safe private references are included only when needed for internal follow-up; never include raw prose, customer identity, operational identifiers, message/page dumps, unrestricted code, raw logs, or opaque handles. Repetition is not a vote; authority and date only prioritize conflict review.
+Safe private references are included only when needed for internal follow-up; never include raw prose, customer identity, operational identifiers, message/page dumps, unrestricted code, raw logs, opaque handles, or the human-only exact-log evidence artifact. Repetition is not a vote; authority and date only prioritize conflict review.

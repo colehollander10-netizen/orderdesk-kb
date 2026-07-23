@@ -136,7 +136,7 @@ class BriefEvidenceContractTests(unittest.TestCase):
             "slack": {"status": "skipped", "reason": "safe_query_unavailable"},
             "notion": {"status": "skipped", "reason": "safe_query_unavailable"},
             "code_context": {"status": "skipped", "reason": "safe_query_unavailable"},
-            "s3_logs": {"status": "skipped", "reason": "log_contract_unavailable"},
+            "s3_logs": {"status": "skipped", "reason": "log_not_material"},
         }
         completed = self.run_fixture({"evidence": [], "sourceCoverage": coverage})
         self.assertEqual(completed.returncode, 0, completed.stderr)

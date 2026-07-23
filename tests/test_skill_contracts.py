@@ -17,9 +17,9 @@ class MultiSourceBriefContractTests(unittest.TestCase):
         for phrase in ("`slack_search`", "`recent_team_context`", "safe product, provider, behavior, workflow, rule, or error-family terms", "files and attachments remain withheld", "no match within the bounded search", "not a comprehensive Slack absence", "Slack-only supporting evidence does not establish policy, deployment, runtime cause, or a confirmed fix"):
             self.assertIn(phrase, governed)
 
-    def test_code_context_and_s3_logs_are_governed_without_advertising_a_tool(self):
+    def test_code_context_and_s3_logs_are_governed_without_claiming_live_readiness(self):
         governed = " ".join(GOVERNED_CONTEXT.read_text().split())
-        for phrase in ("`code_context`", "repository, path, line, and immutable commit", "approved default-branch snapshot", "does not prove deployment", "Code-only supporting evidence does not establish deployment, runtime cause, design intent, or that a code change is warranted", "`s3_log_lookup` is not yet available", "`runtime_event`", "concrete unresolved runtime-event claim", "bounded time window", "S3 API", "generic S3 browsing is forbidden", "raw log lines never reach the model"):
+        for phrase in ("`code_context`", "repository, path, line, and immutable commit", "approved default-branch snapshot", "does not prove deployment", "Code-only supporting evidence does not establish deployment, runtime cause, design intent, or that a code change is warranted", "`s3_log_lookup` is conditional", "synthetic vertical slice", "concrete unresolved `runtime_event` claim", "bounded time window", "correlation candidate", "owner-side orchestrator", "The model cannot grant", "S3 API", "generic S3 browsing is forbidden", "raw log lines never reach the model", "human-only evidence artifact"):
             self.assertIn(phrase, governed)
         self.assertNotIn("aws_log_lookup", governed)
 
@@ -77,7 +77,7 @@ class InvestigationEntrypointContractTests(unittest.TestCase):
 class HelpScoutContractTests(unittest.TestCase):
     def test_correlation_and_masked_target_capabilities_are_versioned(self):
         text = " ".join(HELP_SCOUT.read_text().split())
-        for phrase in ("helpscout.support-context.typed-facts.v1", "helpscout.support-context.masked-target-transcript.v1", "helpscout.support-correlation.opaque-handle.v1", "opaque-correlation-envelope", "before accepting or passing a correlation handle", "mark correlation unavailable", "raw Help Scout prose never reaches the model", "Internal notes and attachments"):
+        for phrase in ("helpscout.support-context.typed-facts.v1", "helpscout.support-context.masked-target-transcript.v1", "helpscout.support-correlation.opaque-handle.v1", "opaque-correlation-envelope", "before accepting or passing a correlation handle", "correlation candidate", "does not grant an S3 Logs read", "owner-side orchestrator", "mark correlation unavailable", "raw Help Scout prose never reaches the model", "Internal notes and attachments"):
             self.assertIn(phrase, text)
 
     def test_investigation_manifest_is_closed(self):
@@ -88,7 +88,9 @@ class HelpScoutContractTests(unittest.TestCase):
             manifest["sources"]["s3_logs"],
             {
                 "claimKinds": ["runtime_event"],
-                "requiredTool": None,
-                "status": "planned_unavailable",
+                "requiredTool": "s3_log_lookup",
+                "status": "conditional",
             },
         )
+        self.assertFalse(manifest["safety"]["rawLogLinesModelVisible"])
+        self.assertTrue(manifest["safety"]["humanOnlyExactLogEvidenceSeparate"])

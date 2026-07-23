@@ -126,6 +126,24 @@ class InvestigationHarnessTests(unittest.TestCase):
                 for forbidden in ("rawtickettext", "correlationhandle", "opaque-test-handle", "credential"):
                     self.assertNotIn(forbidden, json.dumps(result).casefold())
 
+    def test_s3_logs_callback_gets_a_private_handle_that_never_enters_the_result(self):
+        calls = []
+
+        def s3_logs(step, handle):
+            calls.append((step, handle))
+            return {"outcome": "resolved"}
+
+        case = next(item for item in CASES if item["name"] == "target_s3_runtime")
+        result = run_case(case, {"s3_logs": s3_logs})
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0]["logLookupKind"], "order_import")
+        self.assertEqual(calls[0][1], "opaque-test-handle")
+        self.assertTrue(result["callTrace"][-1]["handleTransit"])
+        serialized = json.dumps(result)
+        self.assertNotIn("opaque-test-handle", serialized)
+        self.assertNotIn("correlationHandle", serialized)
+
     def test_unavailable_s3_logs_never_runs_a_callback_or_transits_a_handle(self):
         calls = []
 
@@ -140,7 +158,7 @@ class InvestigationHarnessTests(unittest.TestCase):
         self.assertFalse(any(item["handleTransit"] for item in result["callTrace"]))
         self.assertEqual(
             result["sourceCoverage"]["s3_logs"],
-            {"status": "skipped", "reason": "log_contract_unavailable"},
+            {"status": "unavailable", "reason": "s3_log_lookup_unavailable"},
         )
 
     def test_conflicts_preserve_authority_and_freshness(self):
@@ -163,7 +181,7 @@ class InvestigationHarnessTests(unittest.TestCase):
 
     def test_missing_schema_and_hard_stop_never_continue_private_calls_or_render(self):
         missing_schema = run_case(next(item for item in CASES if item["name"] == "runtime_without_schema"))
-        self.assertEqual(missing_schema["plan"]["sourceCoverage"]["s3_logs"], {"status": "skipped", "reason": "log_contract_unavailable"})
+        self.assertEqual(missing_schema["plan"]["sourceCoverage"]["s3_logs"], {"status": "unavailable", "reason": "log_kind_unavailable"})
         self.assertEqual(missing_schema["nextStep"], "Hand off to the S3 Logs contract owner")
         stopped = run_case({"name": "masking_hard_stop", "claims": ["recent_team_context"], "responses": {"slack": [{"outcome": "stopped", "safeError": "masking_failed"}]}})
         self.assertEqual(stopped["plan"]["status"], "stopped")

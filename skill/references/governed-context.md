@@ -30,11 +30,11 @@ Code-only supporting evidence does not establish deployment, runtime cause, desi
 
 ### S3 Logs
 
-`s3_log_lookup` is not yet available. For now, mark a `runtime_event` claim unavailable with `log_contract_unavailable`; do not substitute CloudWatch, Grafana, Loki, another AWS observability service, or arbitrary AWS/S3 access.
+`s3_log_lookup` is conditional, and only its synthetic vertical slice is proven today. Do not treat tool registration as live readiness. A normal runtime may return bounded unavailability until the correlation broker, approved locator/schema, and human evidence path are deployed.
 
-A future governed S3 Logs lookup may run only for a concrete unresolved runtime-event claim when trustworthy correlation and a bounded time window are available, a schema-specific contract is enabled, and log evidence could materially change the route or answer. Retrieval must use the S3 API against the approved bucket and prefix; generic S3 browsing is forbidden.
+A governed S3 Logs lookup may run only for a concrete unresolved `runtime_event` claim when trustworthy correlation and a bounded time window are available, the lookup kind is enabled, and log evidence could materially change the route or answer. A Help Scout handle is only a correlation candidate: the owner-side orchestrator must resolve the eligible claim from its private session ledger and grant the candidate before lookup. The model cannot grant it or submit eligibility flags. Pass only the opaque `correlationHandle` and closed `lookupKind`; do not expose operational identifiers, timestamps, bucket, prefix, object key, query, range, or limit to the model. Retrieval uses the S3 API against the approved bucket and prefix; generic S3 browsing is forbidden. Do not substitute CloudWatch, Grafana, Loki, another AWS observability service, or arbitrary AWS/S3 access.
 
-The future model channel must expose only a minimized and masked result. raw log lines never reach the model. Exact bounded log evidence belongs in a separate access-controlled human-only artifact or view for developer handoff. Raw reveal must be explicit and approved, must never be automatic, and must not be copied into the brief.
+The model channel exposes only a minimized and masked result. raw log lines never reach the model. Exact bounded log evidence belongs in a separate access-controlled human-only evidence artifact or view for developer handoff. Raw reveal must be explicit and approved, must never be automatic, and must not be copied into planner state, model evidence, the brief, or any customer channel.
 
 ## Preserve the gateway boundary
 

@@ -97,6 +97,8 @@ class ContractSmokePortabilityTests(unittest.TestCase):
                     "helpscout.support-context.complete-target.v1",
                     "helpscout.support-context.masked-target-transcript.v1",
                 ],
+                "correlationCapability": "helpscout.support-correlation.opaque-handle.v1",
+                "correlationOutputMode": "opaque-correlation-envelope",
                 "outputMode": "masked-target-transcript-and-typed-history-facts",
                 "safety": {
                     "rawProseModelVisible": False,

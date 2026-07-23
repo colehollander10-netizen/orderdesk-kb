@@ -23,7 +23,6 @@ CLAIM_SOURCE_ROUTES = {
     "implementation_behavior": ("code_context",),
     "runtime_event": ("s3_logs",),
 }
-S3_LOGS_CALLABLE = False
 LOG_LOOKUP_KINDS = {
     "fulfillment_submission",
     "order_import",
@@ -68,8 +67,15 @@ COVERAGE_PRECEDENCE = {
 SOURCE_COVERAGE_REASONS = {
     "checked": {"target_facts_received", "governed_result_received"},
     "planned": {"next_eligible_source"},
-    "skipped": {"not_needed_for_named_claim", "safe_query_unavailable", "log_contract_unavailable"},
-    "unavailable": {"capability_unavailable", "correlation_unavailable", "log_contract_unavailable", "source_unavailable"},
+    "skipped": {"not_needed_for_named_claim", "safe_query_unavailable", "log_not_material"},
+    "unavailable": {
+        "capability_unavailable",
+        "correlation_unavailable",
+        "log_kind_unavailable",
+        "s3_log_lookup_unavailable",
+        "source_unavailable",
+        "time_window_unavailable",
+    },
     "stopped": STOP_ERRORS,
 }
 
@@ -136,8 +142,50 @@ def _validate_claim(claim: Any, index: int) -> dict[str, Any]:
     return normalized
 
 
+def _validate_s3_log_eligibility(value: Any) -> dict[str, Any]:
+    item = _require_keys(
+        value,
+        {
+            "trustedCorrelation",
+            "boundedTimeWindow",
+            "materiallyChangesRoute",
+            "lookupKinds",
+        },
+        "s3LogEligibility",
+    )
+    for key in (
+        "trustedCorrelation",
+        "boundedTimeWindow",
+        "materiallyChangesRoute",
+    ):
+        if not isinstance(item[key], bool):
+            raise ValueError(f"s3LogEligibility.{key} must be boolean")
+    lookup_kinds = item["lookupKinds"]
+    if (
+        not isinstance(lookup_kinds, list)
+        or any(kind not in LOG_LOOKUP_KINDS for kind in lookup_kinds)
+        or len(set(lookup_kinds)) != len(lookup_kinds)
+    ):
+        raise ValueError("s3LogEligibility.lookupKinds is invalid")
+    return {
+        "trustedCorrelation": item["trustedCorrelation"],
+        "boundedTimeWindow": item["boundedTimeWindow"],
+        "materiallyChangesRoute": item["materiallyChangesRoute"],
+        "lookupKinds": list(lookup_kinds),
+    }
+
+
 def validate_planning_state(payload: object) -> dict[str, Any]:
-    expected = {"ticketNumber", "targetContextState", "sanitizedQuestion", "safeFacts", "missingEvidence", "capabilities", "correlationAvailable", "enabledLogKinds", "hardStopError"}
+    expected = {
+        "ticketNumber",
+        "targetContextState",
+        "sanitizedQuestion",
+        "safeFacts",
+        "missingEvidence",
+        "capabilities",
+        "s3LogEligibility",
+        "hardStopError",
+    }
     data = _require_keys(payload, expected, "planning state")
     if isinstance(data["ticketNumber"], bool) or not isinstance(data["ticketNumber"], int) or data["ticketNumber"] <= 0:
         raise ValueError("ticketNumber must be a positive integer")
@@ -149,10 +197,6 @@ def validate_planning_state(payload: object) -> dict[str, Any]:
     required_capabilities = set(SOURCE_NAMES) - {"help_scout_target"}
     if not isinstance(capabilities, dict) or set(capabilities) != required_capabilities or any(not isinstance(value, bool) for value in capabilities.values()):
         raise ValueError("capabilities must contain the closed source set")
-    if not isinstance(data["correlationAvailable"], bool):
-        raise ValueError("correlationAvailable must be boolean")
-    if not isinstance(data["enabledLogKinds"], list) or any(kind not in LOG_LOOKUP_KINDS for kind in data["enabledLogKinds"]) or len(set(data["enabledLogKinds"])) != len(data["enabledLogKinds"]):
-        raise ValueError("enabledLogKinds is invalid")
     if data["hardStopError"] is not None and data["hardStopError"] not in STOP_ERRORS:
         raise ValueError("hardStopError is invalid")
     claims = [_validate_claim(claim, index) for index, claim in enumerate(data["missingEvidence"])]
@@ -166,8 +210,7 @@ def validate_planning_state(payload: object) -> dict[str, Any]:
         "safeFacts": [_validate_fact(fact, index) for index, fact in enumerate(data["safeFacts"])],
         "missingEvidence": claims,
         "capabilities": copy.deepcopy(capabilities),
-        "correlationAvailable": data["correlationAvailable"],
-        "enabledLogKinds": list(data["enabledLogKinds"]),
+        "s3LogEligibility": _validate_s3_log_eligibility(data["s3LogEligibility"]),
         "hardStopError": data["hardStopError"],
     }
 
@@ -221,24 +264,41 @@ def plan_claim(data: dict, claim: dict) -> tuple[dict, dict | None]:
     for source in routes:
         if source in attempted:
             continue
-        if source == "s3_logs" and not S3_LOGS_CALLABLE:
-            skipped.append({"source": source, "reason": "log_contract_unavailable"})
-            continue
         if not data["capabilities"][source]:
-            skipped.append({"source": source, "reason": "capability_unavailable"})
+            reason = (
+                "s3_log_lookup_unavailable"
+                if source == "s3_logs"
+                else "capability_unavailable"
+            )
+            skipped.append({"source": source, "reason": reason})
             continue
-        if source == "s3_logs" and not data["correlationAvailable"]:
-            skipped.append({"source": source, "reason": "correlation_unavailable"})
-            continue
-        if source == "s3_logs" and claim["logLookupKind"] not in data["enabledLogKinds"]:
-            skipped.append({"source": source, "reason": "log_contract_unavailable"})
-            continue
+        if source == "s3_logs":
+            eligibility = data["s3LogEligibility"]
+            if not eligibility["trustedCorrelation"]:
+                skipped.append({"source": source, "reason": "correlation_unavailable"})
+                continue
+            if not eligibility["boundedTimeWindow"]:
+                skipped.append({"source": source, "reason": "time_window_unavailable"})
+                continue
+            if not eligibility["materiallyChangesRoute"]:
+                skipped.append({"source": source, "reason": "log_not_material"})
+                continue
+            if claim["logLookupKind"] not in eligibility["lookupKinds"]:
+                skipped.append({"source": source, "reason": "log_kind_unavailable"})
+                continue
         step = {"claimId": claim["id"], "claimKind": claim["kind"], "source": source}
         if source == "s3_logs":
             step["logLookupKind"] = claim["logLookupKind"]
         return _disposition(claim, "planned", source, "next_eligible_source", skipped), step
     last = claim["attempts"][-1] if claim["attempts"] else None
-    status = "unavailable" if last and last["outcome"] == "unavailable" else "exhausted"
+    unavailable_reasons = SOURCE_COVERAGE_REASONS["unavailable"]
+    last_skipped_reason = skipped[-1]["reason"] if skipped else None
+    status = (
+        "unavailable"
+        if (last and last["outcome"] == "unavailable")
+        or last_skipped_reason in unavailable_reasons
+        else "exhausted"
+    )
     return _disposition(claim, status, None, skipped[-1]["reason"] if skipped else "eligible_sources_exhausted", skipped), None
 
 
@@ -260,7 +320,11 @@ def derive_source_coverage(data: dict, dispositions: list[dict]) -> dict:
     promote_coverage(coverage, "help_scout_target", "checked", "target_facts_received")
     for item in dispositions:
         for skipped in item["skippedSources"]:
-            status = "skipped" if skipped["reason"] in {"safe_query_unavailable", "log_contract_unavailable"} else "unavailable"
+            status = (
+                "skipped"
+                if skipped["reason"] in SOURCE_COVERAGE_REASONS["skipped"]
+                else "unavailable"
+            )
             promote_coverage(coverage, skipped["source"], status, skipped["reason"])
     attempts = [attempt for claim in data["missingEvidence"] for attempt in claim["attempts"]]
     for source in SOURCE_NAMES[1:]:

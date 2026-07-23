@@ -50,15 +50,21 @@ class InvestigationPlanTests(unittest.TestCase):
 
     def test_closed_target_context_derives_claims_without_connector_only_signals(self):
         payload = self.case("full_context_slack")["input"]
-        result = self.module.plan_investigation({**payload, "missingEvidence": [], "safeFacts": [], "correlationAvailable": True, "enabledLogKinds": ["order_import"]})
-        self.assertEqual([step["source"] for step in result["steps"]], ["code_context", "slack"])
+        eligibility = {
+            "trustedCorrelation": True,
+            "boundedTimeWindow": True,
+            "materiallyChangesRoute": True,
+            "lookupKinds": ["order_import"],
+        }
+        result = self.module.plan_investigation({**payload, "missingEvidence": [], "safeFacts": [], "s3LogEligibility": eligibility})
+        self.assertEqual([step["source"] for step in result["steps"]], ["code_context", "slack", "s3_logs"])
         self.assertEqual(
             result["sourceCoverage"]["s3_logs"],
-            {"status": "skipped", "reason": "log_contract_unavailable"},
+            {"status": "planned", "reason": "next_eligible_source"},
         )
-        unknown = self.module.plan_investigation({**payload, "missingEvidence": [], "safeFacts": [], "sanitizedQuestion": {**payload["sanitizedQuestion"], "observedBehavior": "unmapped"}, "correlationAvailable": True, "enabledLogKinds": ["order_import"]})
+        unknown = self.module.plan_investigation({**payload, "missingEvidence": [], "safeFacts": [], "sanitizedQuestion": {**payload["sanitizedQuestion"], "observedBehavior": "unmapped"}, "s3LogEligibility": eligibility})
         self.assertEqual(unknown["steps"], [])
-        expected_unknown = self.module.plan_investigation({**payload, "missingEvidence": [], "safeFacts": [], "sanitizedQuestion": {**payload["sanitizedQuestion"], "expectedBehavior": "unmapped"}, "correlationAvailable": True, "enabledLogKinds": ["order_import"]})
+        expected_unknown = self.module.plan_investigation({**payload, "missingEvidence": [], "safeFacts": [], "sanitizedQuestion": {**payload["sanitizedQuestion"], "expectedBehavior": "unmapped"}, "s3LogEligibility": eligibility})
         self.assertEqual(expected_unknown["steps"], [])
 
     def test_history_is_optional_and_requires_prior_case_claim(self):
@@ -121,15 +127,41 @@ class InvestigationPlanTests(unittest.TestCase):
         unavailable = self.module.plan_investigation({**payload, "missingEvidence": [unavailable_claim, planned_claim]})
         self.assertEqual(unavailable["sourceCoverage"]["slack"]["status"], "unavailable")
 
-    def test_runtime_is_unavailable_until_s3_log_lookup_exists(self):
+    def test_runtime_claim_selects_s3_log_lookup_only_after_all_closed_gates_pass(self):
         payload = self.case("s3_runtime")["input"]
         result = self.module.plan_investigation(payload)
-        self.assertEqual(result["steps"], [])
-        self.assertEqual(result["claimDispositions"][0]["reason"], "log_contract_unavailable")
+        self.assertEqual(
+            result["steps"],
+            [{
+                "claimId": "c1",
+                "claimKind": "runtime_event",
+                "source": "s3_logs",
+                "logLookupKind": "order_import",
+            }],
+        )
         self.assertEqual(
             result["sourceCoverage"]["s3_logs"],
-            {"status": "skipped", "reason": "log_contract_unavailable"},
+            {"status": "planned", "reason": "next_eligible_source"},
         )
+
+    def test_runtime_claim_fails_each_closed_eligibility_gate_with_an_exact_reason(self):
+        payload = self.case("s3_runtime")["input"]
+        cases = (
+            ({"capabilities": {**payload["capabilities"], "s3_logs": False}}, "s3_log_lookup_unavailable", "unavailable"),
+            ({"s3LogEligibility": {**payload["s3LogEligibility"], "trustedCorrelation": False}}, "correlation_unavailable", "unavailable"),
+            ({"s3LogEligibility": {**payload["s3LogEligibility"], "boundedTimeWindow": False}}, "time_window_unavailable", "unavailable"),
+            ({"s3LogEligibility": {**payload["s3LogEligibility"], "materiallyChangesRoute": False}}, "log_not_material", "skipped"),
+            ({"s3LogEligibility": {**payload["s3LogEligibility"], "lookupKinds": []}}, "log_kind_unavailable", "unavailable"),
+        )
+        for override, reason, coverage_status in cases:
+            with self.subTest(reason=reason):
+                result = self.module.plan_investigation({**payload, **override})
+                self.assertEqual(result["steps"], [])
+                self.assertEqual(result["claimDispositions"][0]["reason"], reason)
+                self.assertEqual(
+                    result["sourceCoverage"]["s3_logs"],
+                    {"status": coverage_status, "reason": reason},
+                )
 
     def test_blocked_and_hard_stop_return_complete_stopped_dispositions(self):
         payload = self.case("mixed_smallest_set")["input"]
