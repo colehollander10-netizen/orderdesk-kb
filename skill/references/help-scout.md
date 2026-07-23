@@ -12,6 +12,18 @@ Do not ask the rep to name every source in advance. The orchestrator must name o
 
 Use `helpscout_status` before calling `helpscout_get_support_context`. It must advertise `helpscout.support-context.typed-facts.v1`, `helpscout.support-context.complete-target.v1`, and `helpscout.support-context.masked-target-transcript.v1`; otherwise the bridge is a technical blocker. Never substitute another body-returning tool. After target intake, require `limits.targetThreads` to equal `all provider pages`, `target.threadLimitApplied` to be false, and `target.inspectedThreadCount` to equal `target.page.totalElements`. Any mismatch is a technical blocker because the bridge has not proven that it inspected the complete target conversation. Require `target.transcript.messages` to contain only `{role,text}` records and `target.transcript.characterCount` to be present. `helpscout_status` must also advertise `helpscout.support-correlation.opaque-handle.v1` with output mode `opaque-correlation-envelope` before accepting or passing a correlation handle. Validate that exact pair against `contracts/help-scout-correlation.json`.
 
+For a whole-product benchmark, the static bridge contract is not enough.
+Before selecting or opening a ticket, pass capability names, correlation output
+mode, and tool names only from the connected runtimes through
+`python3 scripts/runtime_preflight.py`. Send one JSON object on standard input with
+exactly `helpScoutCapabilities`, `helpScoutCorrelationOutputMode`, and
+`gatewayTools`. `runtime_contract_mismatch` exits nonzero and stops the
+benchmark before body intake; it must not be downgraded to correlation
+unavailability. Start a fresh Codex task/runtime after a merge, then repeat the
+preflight. An ordinary one-ticket investigation may continue when only the
+optional correlation capability is absent, but it must ignore all correlation
+fields and mark correlation unavailable.
+
 The `available` variant contains exactly `state`, `correlationHandle`, and `lookupKinds`; `not_found` and `unavailable` contain exactly `state` and an empty `lookupKinds`. This means a trusted correlation candidate exists; it does not grant an S3 Logs read. Only the owner-side orchestrator may grant that candidate after resolving an eligible server-held runtime claim. No variant contains `available`, `expiresAt`, eligibility flags, or an extra field. If capability or envelope is absent or mismatched, the target/history workflow may continue, but ignore every correlation field and mark correlation unavailable. Never infer handle support from the transcript or typed facts.
 
 The MCP workflow has no automatic CLI body fallback. The explicit CLI body command is an operator-only local diagnostic, never model context and not a fallback. Internal notes and attachments are excluded: notes never contribute evidence, and attachments are not accessed.

@@ -77,8 +77,30 @@ class InvestigationEntrypointContractTests(unittest.TestCase):
 class HelpScoutContractTests(unittest.TestCase):
     def test_correlation_and_masked_target_capabilities_are_versioned(self):
         text = " ".join(HELP_SCOUT.read_text().split())
-        for phrase in ("helpscout.support-context.typed-facts.v1", "helpscout.support-context.masked-target-transcript.v1", "helpscout.support-correlation.opaque-handle.v1", "opaque-correlation-envelope", "before accepting or passing a correlation handle", "correlation candidate", "does not grant an S3 Logs read", "owner-side orchestrator", "mark correlation unavailable", "raw Help Scout prose never reaches the model", "Internal notes and attachments"):
+        for phrase in ("helpscout.support-context.typed-facts.v1", "helpscout.support-context.complete-target.v1", "helpscout.support-context.masked-target-transcript.v1", "helpscout.support-correlation.opaque-handle.v1", "opaque-correlation-envelope", "before accepting or passing a correlation handle", "correlation candidate", "does not grant an S3 Logs read", "owner-side orchestrator", "mark correlation unavailable", "raw Help Scout prose never reaches the model", "Internal notes and attachments"):
             self.assertIn(phrase, text)
+
+    def test_whole_product_benchmark_requires_a_content_free_runtime_preflight(self):
+        skill = " ".join(SKILL.read_text().split())
+        help_scout = " ".join(HELP_SCOUT.read_text().split())
+        governed = " ".join(GOVERNED_CONTEXT.read_text().split())
+
+        for text in (skill, help_scout, governed):
+            lowered = text.lower()
+            self.assertIn("runtime_contract_mismatch", lowered)
+            self.assertIn("whole-product benchmark", lowered)
+            self.assertIn("before selecting or opening a ticket", lowered)
+            self.assertIn("helpscoutcorrelationoutputmode", lowered)
+            self.assertIn("standard input", lowered)
+        self.assertIn("fresh Codex task/runtime", skill)
+        self.assertIn(
+            "capability names, correlation output mode, and tool names only",
+            help_scout,
+        )
+        self.assertIn(
+            "tool registration does not prove s3 logs readiness",
+            governed.lower(),
+        )
 
     def test_investigation_manifest_is_closed(self):
         manifest = json.loads((ROOT / "skill" / "contracts" / "investigation.json").read_text())
@@ -92,5 +114,15 @@ class HelpScoutContractTests(unittest.TestCase):
                 "status": "conditional",
             },
         )
+        self.assertEqual(
+            manifest["runtimePreflight"],
+            {
+                "scope": "whole_product_benchmark",
+                "before": "ticket_selection_or_body_read",
+                "onMismatch": "runtime_contract_mismatch",
+                "contentFree": True,
+            },
+        )
+        self.assertIn("runtime_contract_mismatch", manifest["stopErrors"])
         self.assertFalse(manifest["safety"]["rawLogLinesModelVisible"])
         self.assertTrue(manifest["safety"]["humanOnlyExactLogEvidenceSeparate"])

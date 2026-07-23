@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "ordering": "unordered_exact",
+  "gatewayTools": [
+    "slack_search",
+    "slack_conversations",
+    "slack_recent_messages",
+    "slack_thread",
+    "notion_search",
+    "notion_page",
+    "bitbucket_directory",
+    "bitbucket_file",
+    "code_context",
+    "s3_log_lookup"
+  ]
+}

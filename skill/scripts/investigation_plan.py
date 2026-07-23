@@ -49,6 +49,7 @@ SAFE_FACT_CLAIM_MAP = {
 SAFE_FACT_KEYS = {"provider_family", "affected_scope", "rule_event", "missing_evidence_code"}
 STOP_ERRORS = {
     "support_context_blocked",
+    "runtime_contract_mismatch",
     "policy_denied",
     "scope_denied",
     "unsafe_query",

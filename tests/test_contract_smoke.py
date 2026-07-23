@@ -68,6 +68,41 @@ class ContractSmokePortabilityTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 1)
         self.assertIn("reply drafting boundary mismatch", completed.stderr)
 
+    def test_portable_smoke_requires_the_runtime_preflight_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            skill = self.make_clean_skill_copy(directory)
+            manifest = skill / "contracts" / "investigation.json"
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            payload.pop("runtimePreflight", None)
+            manifest.write_text(json.dumps(payload), encoding="utf-8")
+            completed = self.run_smoke(skill)
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("runtime preflight mismatch", completed.stderr)
+
+        with tempfile.TemporaryDirectory() as directory:
+            skill = self.make_clean_skill_copy(directory)
+            manifest = skill / "contracts" / "investigation.json"
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            payload["stopErrors"] = [
+                value
+                for value in payload["stopErrors"]
+                if value != "runtime_contract_mismatch"
+            ]
+            manifest.write_text(json.dumps(payload), encoding="utf-8")
+            completed = self.run_smoke(skill)
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("investigation stop errors mismatch", completed.stderr)
+
+        with tempfile.TemporaryDirectory() as directory:
+            skill = self.make_clean_skill_copy(directory)
+            manifest = skill / "contracts" / "runtime-preflight.json"
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            payload["gatewayTools"].remove("s3_log_lookup")
+            manifest.write_text(json.dumps(payload), encoding="utf-8")
+            completed = self.run_smoke(skill)
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("runtime preflight gateway tools mismatch", completed.stderr)
+
     def test_portable_smoke_rejects_reply_mode_or_missing_source_tool(self):
         with tempfile.TemporaryDirectory() as directory:
             skill = self.make_clean_skill_copy(directory)

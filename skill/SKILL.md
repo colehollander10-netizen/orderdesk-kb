@@ -15,6 +15,19 @@ The ticket-number invocation grants task-scoped authority for one conditional, r
 
 Read [references/help-scout.md](references/help-scout.md) before target intake, [references/product-diagnostics.md](references/product-diagnostics.md) before claim planning, [references/public-kb.md](references/public-kb.md) before KB access, and [references/governed-context.md](references/governed-context.md) before any `orderdesk_context` call.
 
+For a whole-product benchmark, run the content-free
+`python3 scripts/runtime_preflight.py` contract before selecting or opening a ticket.
+Send one JSON object on standard input with exactly
+`helpScoutCapabilities`, `helpScoutCorrelationOutputMode`, and `gatewayTools`
+from the connected runtimes. The script emits only the content-free result and
+exits nonzero on `runtime_contract_mismatch`, which stops the entire benchmark
+before any Help Scout body intake. After a merge or runtime change, start a
+fresh Codex task/runtime and repeat this preflight; a static checkout contract
+does not prove the already-running MCP processes match it. An ordinary
+one-ticket investigation may continue without the optional correlation
+capability, but must ignore correlation fields and mark correlation
+unavailable.
+
 ## Read the target and form closed claims
 
 A named real Help Scout ticket is the intake artifact. Proceed without a second approval prompt. Verify that `helpscout_status` advertises `helpscout.support-context.typed-facts.v1`, `helpscout.support-context.complete-target.v1`, and `helpscout.support-context.masked-target-transcript.v1` before calling `helpscout_get_support_context`; an absent capability is a technical blocker. The bridge must inspect the complete target conversation across all provider pages without per-message truncation and return the ordered masked customer/staff transcript. Selected historical tickets remain typed-facts-only. Before accepting or passing a correlation handle, require `helpscout.support-correlation.opaque-handle.v1` with output mode `opaque-correlation-envelope`; otherwise ignore correlation fields and mark correlation unavailable.
@@ -42,7 +55,7 @@ S3 Logs is conditional, with only a synthetic vertical slice proven today. Call 
 
 The model-visible S3 result must remain minimized and masked. Exact bounded log lines belong only in a separate access-controlled human-only evidence artifact for developer handoff. Raw reveal must be explicit, approved, human-only, and never automatic; neither raw lines nor the artifact enter planner state, model evidence, the brief, or a customer channel. The current synthetic proof does not establish a production broker lifecycle, real S3 locator/schema, artifact storage/viewer, deployment, monitoring, SLOs, or central audit.
 
-Stop before merge, replan, or rendering on `policy_denied`, `scope_denied`, `unsafe_query`, `masking_failed`, `audit_failed`, `handle_integrity_failed`, or `credential_boundary_failed`. Normal bounded unavailability is recorded truthfully.
+Stop before merge, replan, or rendering on `runtime_contract_mismatch`, `policy_denied`, `scope_denied`, `unsafe_query`, `masking_failed`, `audit_failed`, `handle_integrity_failed`, or `credential_boundary_failed`. Normal bounded unavailability is recorded truthfully.
 
 ## Render one internal brief
 
