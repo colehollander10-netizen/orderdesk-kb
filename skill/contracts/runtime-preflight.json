@@ -1,6 +1,10 @@
 {
   "schemaVersion": 1,
   "ordering": "unordered_exact",
+  "targetOutputModes": [
+    "readable_masked_transcript",
+    "typed_facts_fallback"
+  ],
   "gatewayTools": [
     "slack_search",
     "slack_conversations",

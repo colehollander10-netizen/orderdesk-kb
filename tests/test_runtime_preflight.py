@@ -8,6 +8,7 @@ from skill.scripts.runtime_preflight import (
     GATEWAY_TOOLS,
     HELP_SCOUT_CAPABILITIES,
     HELP_SCOUT_CORRELATION_OUTPUT_MODE,
+    HELP_SCOUT_TARGET_OUTPUT_MODES,
     evaluate_runtime_contract,
 )
 
@@ -19,6 +20,7 @@ class RuntimePreflightTests(unittest.TestCase):
     def valid_payload(self):
         return {
             "helpScoutCapabilities": list(HELP_SCOUT_CAPABILITIES),
+            "helpScoutTargetOutputModes": list(HELP_SCOUT_TARGET_OUTPUT_MODES),
             "helpScoutCorrelationOutputMode": HELP_SCOUT_CORRELATION_OUTPUT_MODE,
             "gatewayTools": list(GATEWAY_TOOLS),
         }
@@ -26,6 +28,7 @@ class RuntimePreflightTests(unittest.TestCase):
     def test_accepts_the_exact_reviewed_runtime_surface(self):
         payload = self.valid_payload()
         payload["helpScoutCapabilities"].reverse()
+        payload["helpScoutTargetOutputModes"].reverse()
         payload["gatewayTools"].reverse()
 
         self.assertEqual(evaluate_runtime_contract(payload), {"ok": True})
@@ -57,6 +60,43 @@ class RuntimePreflightTests(unittest.TestCase):
         wrong["helpScoutCorrelationOutputMode"] = "invented-wrong-mode"
 
         for candidate in (missing, wrong):
+            with self.subTest(candidate=candidate):
+                self.assertEqual(
+                    evaluate_runtime_contract(candidate),
+                    {"ok": False, "error": "runtime_contract_mismatch"},
+                )
+
+    def test_rejects_target_output_mode_drift(self):
+        candidates = []
+
+        missing = self.valid_payload()
+        missing["helpScoutTargetOutputModes"].pop()
+        candidates.append(missing)
+
+        extra = self.valid_payload()
+        extra["helpScoutTargetOutputModes"].append("invented_extra_mode")
+        candidates.append(extra)
+
+        duplicate = self.valid_payload()
+        duplicate["helpScoutTargetOutputModes"].append(
+            duplicate["helpScoutTargetOutputModes"][0]
+        )
+        candidates.append(duplicate)
+
+        stale = self.valid_payload()
+        stale["helpScoutCapabilities"].remove(
+            "helpscout.support-context.readable-masked-target.v2"
+        )
+        stale["helpScoutCapabilities"].append(
+            "helpscout.support-context.masked-target-transcript.v1"
+        )
+        candidates.append(stale)
+
+        non_string = self.valid_payload()
+        non_string["helpScoutTargetOutputModes"][0] = 1
+        candidates.append(non_string)
+
+        for candidate in candidates:
             with self.subTest(candidate=candidate):
                 self.assertEqual(
                     evaluate_runtime_contract(candidate),
@@ -127,6 +167,7 @@ class RuntimePreflightTests(unittest.TestCase):
             input=json.dumps(
                 {
                     "helpScoutCapabilities": [marker],
+                    "helpScoutTargetOutputModes": [marker],
                     "helpScoutCorrelationOutputMode": marker,
                     "gatewayTools": [marker],
                 }
@@ -166,7 +207,7 @@ class RuntimePreflightTests(unittest.TestCase):
                 {
                     "helpscout.support-context.typed-facts.v1",
                     "helpscout.support-context.complete-target.v1",
-                    "helpscout.support-context.masked-target-transcript.v1",
+                    "helpscout.support-context.readable-masked-target.v2",
                     "helpscout.support-correlation.opaque-handle.v1",
                 }
             ),
@@ -180,6 +221,19 @@ class RuntimePreflightTests(unittest.TestCase):
             "opaque-correlation-envelope",
         )
         self.assertEqual(GATEWAY_TOOLS, frozenset(runtime["gatewayTools"]))
+        self.assertEqual(
+            HELP_SCOUT_TARGET_OUTPUT_MODES,
+            frozenset(runtime["targetOutputModes"]),
+        )
+        self.assertEqual(
+            HELP_SCOUT_TARGET_OUTPUT_MODES,
+            frozenset(
+                {
+                    "readable_masked_transcript",
+                    "typed_facts_fallback",
+                }
+            ),
+        )
         self.assertEqual(
             GATEWAY_TOOLS,
             frozenset(

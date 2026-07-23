@@ -3,9 +3,13 @@
   "requiredCapability": "helpscout.support-context.typed-facts.v1",
   "requiredTargetCapabilities": [
     "helpscout.support-context.complete-target.v1",
-    "helpscout.support-context.masked-target-transcript.v1"
+    "helpscout.support-context.readable-masked-target.v2"
   ],
-  "requiredOutputMode": "masked-target-transcript-and-typed-history-facts",
+  "requiredTargetOutputModes": [
+    "readable_masked_transcript",
+    "typed_facts_fallback"
+  ],
+  "requiredOutputMode": "readable-masked-target-or-typed-fallback-and-typed-history-facts",
   "requiredSafety": {
     "rawProseModelVisible": false,
     "maskedTargetProseModelVisible": true,

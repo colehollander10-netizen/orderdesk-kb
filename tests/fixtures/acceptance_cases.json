@@ -1,0 +1,55 @@
+[
+  {
+    "alias": "Docs-History",
+    "claims": ["documented_behavior", "prior_case_handling"],
+    "responses": {
+      "public_kb": [{"outcome": "resolved"}],
+      "helpscout_history": [{"outcome": "resolved"}]
+    },
+    "expectedTrace": ["help_scout_target", "public_kb", "helpscout_history"],
+    "expectedRoute": "Support can answer"
+  },
+  {
+    "alias": "Slack-Notion",
+    "claims": ["recent_team_context", "intended_process"],
+    "responses": {
+      "slack": [{"outcome": "resolved"}],
+      "notion": [{"outcome": "resolved"}]
+    },
+    "conflict": "same_claim_different_values",
+    "expectedTrace": ["help_scout_target", "slack", "notion"],
+    "expectedRoute": "Store configuration / Rule Builder"
+  },
+  {
+    "alias": "Notion-Code",
+    "claims": ["intended_process", "implementation_behavior"],
+    "historicalClaimKinds": ["prior_case_handling", "recent_team_context"],
+    "targetThreadCount": 64,
+    "responses": {
+      "notion": [{"outcome": "resolved"}],
+      "code_context": [{"outcome": "resolved"}]
+    },
+    "expectedTrace": ["help_scout_target", "notion", "code_context"],
+    "expectedRoute": "Likely code change"
+  },
+  {
+    "alias": "Synthetic-S3",
+    "claims": ["runtime_event"],
+    "responses": {"s3_logs": [{"outcome": "resolved"}]},
+    "expectedTrace": ["help_scout_target", "s3_logs"],
+    "expectedRoute": "Logs or runtime investigation"
+  },
+  {
+    "alias": "Long-T3",
+    "claims": ["implementation_behavior"],
+    "historicalClaimKinds": [
+      "documented_behavior",
+      "recent_team_context",
+      "prior_case_handling"
+    ],
+    "targetThreadCount": 80,
+    "responses": {"code_context": [{"outcome": "resolved"}]},
+    "expectedTrace": ["help_scout_target", "code_context"],
+    "expectedRoute": "Insufficient evidence — abstain"
+  }
+]
