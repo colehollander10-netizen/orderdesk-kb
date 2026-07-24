@@ -143,7 +143,7 @@ class ContractSmokePortabilityTests(unittest.TestCase):
                     "rawProseModelVisible": False,
                     "maskedTargetProseModelVisible": True,
                     "internalNotesUsedAsEvidence": False,
-                    "attachmentsAccessed": True,
+                    "attachmentsAccessed": "eligible_target_attachments_only",
                     "failClosed": True,
                 },
             }
@@ -161,6 +161,46 @@ class ContractSmokePortabilityTests(unittest.TestCase):
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertTrue(json.loads(completed.stdout)["help_scout_integration"])
+
+    def test_opt_in_help_scout_contract_rejects_boolean_attachment_scope(self):
+        with tempfile.TemporaryDirectory() as directory:
+            skill = self.make_clean_skill_copy(directory)
+            connector = Path(directory) / "help-scout-mcp"
+            executable = connector / "bin" / "help-scout-mcp.js"
+            executable.parent.mkdir(parents=True)
+            contract = {
+                "schemaVersion": 1,
+                "capability": "helpscout.support-context.typed-facts.v1",
+                "targetCapabilities": [
+                    "helpscout.support-context.complete-target.v1",
+                    "helpscout.support-context.readable-masked-target.v3",
+                ],
+                "targetOutputModes": [
+                    "readable_masked_transcript",
+                    "typed_facts_fallback",
+                ],
+                "correlationCapability": "helpscout.support-correlation.opaque-handle.v1",
+                "correlationOutputMode": "opaque-correlation-envelope",
+                "outputMode": "readable-masked-target-or-typed-fallback-and-typed-history-facts",
+                "safety": {
+                    "rawProseModelVisible": False,
+                    "maskedTargetProseModelVisible": True,
+                    "internalNotesUsedAsEvidence": False,
+                    "attachmentsAccessed": True,
+                    "failClosed": True,
+                },
+            }
+            executable.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json\n"
+                f"print(json.dumps({contract!r}))\n",
+                encoding="utf-8",
+            )
+            executable.chmod(0o755)
+            completed = self.run_smoke(skill, "--help-scout-root", str(connector))
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("Help Scout safety contract mismatch", completed.stderr)
 
     def test_opt_in_help_scout_contract_rejects_capability_mismatch(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -193,7 +233,7 @@ class ContractSmokePortabilityTests(unittest.TestCase):
             connector = Path(directory) / "help-scout-mcp"
             executable = connector / "bin" / "help-scout-mcp.js"
             executable.parent.mkdir(parents=True)
-            executable.write_text("#!/usr/bin/env python3\nimport json\nprint(json.dumps({'schemaVersion': 1, 'capability': 'helpscout.support-context.typed-facts.v1', 'targetCapabilities': ['helpscout.support-context.readable-masked-target.v2'], 'targetOutputModes': ['readable_masked_transcript', 'typed_facts_fallback'], 'outputMode': 'readable-masked-target-or-typed-fallback-and-typed-history-facts', 'safety': {'rawProseModelVisible': False, 'maskedTargetProseModelVisible': True, 'internalNotesUsedAsEvidence': False, 'attachmentsAccessed': True, 'failClosed': True}}))\n", encoding="utf-8")
+            executable.write_text("#!/usr/bin/env python3\nimport json\nprint(json.dumps({'schemaVersion': 1, 'capability': 'helpscout.support-context.typed-facts.v1', 'targetCapabilities': ['helpscout.support-context.readable-masked-target.v2'], 'targetOutputModes': ['readable_masked_transcript', 'typed_facts_fallback'], 'outputMode': 'readable-masked-target-or-typed-fallback-and-typed-history-facts', 'safety': {'rawProseModelVisible': False, 'maskedTargetProseModelVisible': True, 'internalNotesUsedAsEvidence': False, 'attachmentsAccessed': 'eligible_target_attachments_only', 'failClosed': True}}))\n", encoding="utf-8")
             executable.chmod(0o755)
             completed = self.run_smoke(skill, "--help-scout-root", str(connector))
         self.assertEqual(completed.returncode, 1)
@@ -215,7 +255,7 @@ class ContractSmokePortabilityTests(unittest.TestCase):
                 "'safety': {'rawProseModelVisible': False, "
                 "'maskedTargetProseModelVisible': True, "
                 "'internalNotesUsedAsEvidence': False, "
-                "'attachmentsAccessed': True, 'failClosed': True}}))\n",
+                "'attachmentsAccessed': 'eligible_target_attachments_only', 'failClosed': True}}))\n",
                 encoding="utf-8",
             )
             executable.chmod(0o755)

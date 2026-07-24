@@ -191,7 +191,7 @@ def check_manifest_contract() -> dict:
             "rawProseModelVisible": False,
             "maskedTargetProseModelVisible": True,
             "internalNotesUsedAsEvidence": False,
-            "attachmentsAccessed": True,
+            "attachmentsAccessed": "eligible_target_attachments_only",
             "failClosed": True,
         },
         "Help Scout manifest safety contract is not closed",

@@ -14,7 +14,7 @@
     "rawProseModelVisible": false,
     "maskedTargetProseModelVisible": true,
     "internalNotesUsedAsEvidence": false,
-    "attachmentsAccessed": true,
+    "attachmentsAccessed": "eligible_target_attachments_only",
     "failClosed": true
   }
 }
