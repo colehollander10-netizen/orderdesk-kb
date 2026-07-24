@@ -26,6 +26,56 @@ class InvestigationPlanTests(unittest.TestCase):
     def case(self, name):
         return next(case for case in self.cases if case["name"] == name)
 
+    def test_attachment_coverage_is_closed_and_decisive_attachment_only_claims_require_complete_coverage(self):
+        payload = self.case("public_only")["input"]
+        partial = self.module.plan_investigation({
+            **payload,
+            "targetAttachmentCoverage": "partial",
+            "decisiveEvidenceAttachmentOnly": True,
+        })
+        self.assertEqual(partial["status"], "abstain")
+        self.assertEqual(
+            partial["targetAttachmentDisposition"],
+            {"status": "unavailable", "reason": "attachment_understanding_incomplete"},
+        )
+        complete = self.module.plan_investigation({
+            **payload,
+            "targetAttachmentCoverage": "complete",
+            "decisiveEvidenceAttachmentOnly": True,
+        })
+        self.assertEqual(complete["status"], "running")
+        self.assertEqual(
+            complete["targetAttachmentDisposition"],
+            {"status": "complete", "reason": "attachment_evidence_complete"},
+        )
+
+    def test_attachment_coverage_blocks_only_attachment_dependent_claims_and_rejects_contract_drift(self):
+        payload = self.case("public_only")["input"]
+        for coverage, reason in (
+            ("none", "attachment_evidence_unavailable"),
+            ("blocked", "attachment_evidence_blocked"),
+            ("unavailable", "attachment_evidence_unavailable"),
+        ):
+            with self.subTest(coverage=coverage):
+                result = self.module.plan_investigation({
+                    **payload,
+                    "targetAttachmentCoverage": coverage,
+                    "decisiveEvidenceAttachmentOnly": True,
+                })
+                self.assertEqual(result["status"], "abstain")
+                self.assertEqual(result["targetAttachmentDisposition"]["reason"], reason)
+                self.assertEqual(result["targetAttachmentDisposition"]["status"], "unavailable" if coverage in {"none", "unavailable"} else "blocked")
+        text_supported = self.module.plan_investigation({
+            **payload,
+            "targetAttachmentCoverage": "none",
+            "decisiveEvidenceAttachmentOnly": False,
+        })
+        self.assertEqual(text_supported["status"], "running")
+        with self.assertRaisesRegex(ValueError, "unexpected fields"):
+            self.module.plan_investigation({key: value for key, value in payload.items() if key != "targetAttachmentCoverage"})
+        with self.assertRaisesRegex(ValueError, "invalid"):
+            self.module.plan_investigation({**payload, "targetAttachmentCoverage": "invented"})
+
     def test_fixture_selects_expected_initial_sources(self):
         for case in self.cases:
             with self.subTest(case=case["name"]):

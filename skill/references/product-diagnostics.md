@@ -12,6 +12,8 @@ import.” First establish:
 - data-flow direction and affected object;
 - expected behavior versus observed behavior;
 - sanitized exact error or skipped-step wording, when available;
+- when governed attachment coverage is complete, the sanitized exact error and
+  visible automation chain from the attachment evidence envelope;
 - approximate occurrence time and whether all or only some records are
   affected.
 
@@ -28,6 +30,14 @@ Do not ask the operator to paste customer, order, store, or credential
 identifiers into agent chat. If an exact private identifier is required for a
 human investigation or an unavailable source, name that requirement in the
 handoff without requesting its value.
+
+When a decisive Help Scout attachment is partial, unreadable, blocked, or
+unavailable, preserve that closed material ambiguity. Ask one focused
+human-inspection question about the missing error or visible automation-chain
+step; do not turn the gap into a generic KB, Slack, Notion, code, or historical
+ticket search. Complete governed attachment evidence may establish the exact
+sanitized error and visible event -> filters -> actions chain, but does not
+establish customer configuration, runtime cause, deployment, or a fix.
 
 ## Describe integration direction
 

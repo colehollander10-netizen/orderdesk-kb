@@ -78,7 +78,7 @@ class HelpScoutContractTests(unittest.TestCase):
     def test_correlation_and_readable_target_capabilities_are_versioned(self):
         skill = " ".join(SKILL.read_text().split())
         text = " ".join(HELP_SCOUT.read_text().split())
-        for phrase in ("helpscout.support-context.typed-facts.v1", "helpscout.support-context.complete-target.v1", "helpscout.support-context.readable-masked-target.v2", "readable_masked_transcript", "typed_facts_fallback", "helpscout.support-correlation.opaque-handle.v1", "opaque-correlation-envelope", "before accepting or passing a correlation handle", "correlation candidate", "does not grant an S3 Logs read", "owner-side orchestrator", "mark correlation unavailable", "raw Help Scout prose never reaches the model", "Internal notes and attachments"):
+        for phrase in ("helpscout.support-context.typed-facts.v1", "helpscout.support-context.complete-target.v1", "helpscout.support-context.readable-masked-target.v3", "readable_masked_transcript", "typed_facts_fallback", "helpscout.support-correlation.opaque-handle.v1", "opaque-correlation-envelope", "before accepting or passing a correlation handle", "correlation candidate", "does not grant an S3 Logs read", "owner-side orchestrator", "mark correlation unavailable", "raw Help Scout prose never reaches the model", "attachmentEvidence", "excludedUnrecognizedThread", "exact receipt arithmetic", "Internal notes never contribute evidence"):
             self.assertIn(phrase, text)
         self.assertIn("normal product output remains readable", text.casefold())
         self.assertIn("fallback contains no transcript", text.casefold())

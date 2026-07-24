@@ -3,7 +3,7 @@
   "requiredCapability": "helpscout.support-context.typed-facts.v1",
   "requiredTargetCapabilities": [
     "helpscout.support-context.complete-target.v1",
-    "helpscout.support-context.readable-masked-target.v2"
+    "helpscout.support-context.readable-masked-target.v3"
   ],
   "requiredTargetOutputModes": [
     "readable_masked_transcript",
@@ -14,7 +14,7 @@
     "rawProseModelVisible": false,
     "maskedTargetProseModelVisible": true,
     "internalNotesUsedAsEvidence": false,
-    "attachmentsAccessed": false,
+    "attachmentsAccessed": "eligible_target_attachments_only",
     "failClosed": true
   }
 }

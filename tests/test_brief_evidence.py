@@ -121,6 +121,9 @@ class BriefEvidenceContractTests(unittest.TestCase):
         self.assertIn("source date", template)
         self.assertIn("explicit authority", template)
         self.assertIn("Repetition is not a vote", template)
+        self.assertIn("Help Scout attachments: complete|partial|none|blocked|unavailable", template)
+        self.assertIn("Attachment extraction: macOS native PDF text/OCR and layout", template)
+        self.assertIn("Material ambiguity: none|<closed reason>", template)
 
     def test_every_governed_source_type_is_accepted(self):
         records = [evidence_record(f"source_{index}", "supported", source_type=source_type) | {"claim_key": f"claim_{index}"} for index, source_type in enumerate(("help_scout", "public_kb", "slack", "notion", "code_context", "s3_logs"), start=1)]

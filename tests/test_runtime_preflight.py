@@ -25,6 +25,33 @@ class RuntimePreflightTests(unittest.TestCase):
             "gatewayTools": list(GATEWAY_TOOLS),
         }
 
+    def reviewed_v3_payload(self):
+        return {
+            "helpScoutCapabilities": [
+                "helpscout.support-context.typed-facts.v1",
+                "helpscout.support-context.complete-target.v1",
+                "helpscout.support-context.readable-masked-target.v3",
+                "helpscout.support-correlation.opaque-handle.v1",
+            ],
+            "helpScoutTargetOutputModes": [
+                "readable_masked_transcript",
+                "typed_facts_fallback",
+            ],
+            "helpScoutCorrelationOutputMode": "opaque-correlation-envelope",
+            "gatewayTools": [
+                "slack_search",
+                "slack_conversations",
+                "slack_recent_messages",
+                "slack_thread",
+                "notion_search",
+                "notion_page",
+                "bitbucket_directory",
+                "bitbucket_file",
+                "code_context",
+                "s3_log_lookup",
+            ],
+        }
+
     def test_accepts_the_exact_reviewed_runtime_surface(self):
         payload = self.valid_payload()
         payload["helpScoutCapabilities"].reverse()
@@ -66,6 +93,42 @@ class RuntimePreflightTests(unittest.TestCase):
                     {"ok": False, "error": "runtime_contract_mismatch"},
                 )
 
+    def test_rejects_v2_only_or_mixed_readable_target_capabilities(self):
+        v2_only = self.reviewed_v3_payload()
+        v2_only["helpScoutCapabilities"].remove(
+            "helpscout.support-context.readable-masked-target.v3"
+        )
+        v2_only["helpScoutCapabilities"].append(
+            "helpscout.support-context.readable-masked-target.v2"
+        )
+
+        v2_and_v3 = self.reviewed_v3_payload()
+        v2_and_v3["helpScoutCapabilities"].append(
+            "helpscout.support-context.readable-masked-target.v2"
+        )
+
+        missing_v3 = self.reviewed_v3_payload()
+        missing_v3["helpScoutCapabilities"].remove(
+            "helpscout.support-context.readable-masked-target.v3"
+        )
+
+        extra_attachment_capability = self.reviewed_v3_payload()
+        extra_attachment_capability["helpScoutCapabilities"].append(
+            "helpscout.support-context.attachment-evidence.v1"
+        )
+
+        for candidate in (
+            v2_only,
+            v2_and_v3,
+            missing_v3,
+            extra_attachment_capability,
+        ):
+            with self.subTest(candidate=candidate):
+                self.assertEqual(
+                    evaluate_runtime_contract(candidate),
+                    {"ok": False, "error": "runtime_contract_mismatch"},
+                )
+
     def test_rejects_target_output_mode_drift(self):
         candidates = []
 
@@ -82,15 +145,6 @@ class RuntimePreflightTests(unittest.TestCase):
             duplicate["helpScoutTargetOutputModes"][0]
         )
         candidates.append(duplicate)
-
-        stale = self.valid_payload()
-        stale["helpScoutCapabilities"].remove(
-            "helpscout.support-context.readable-masked-target.v2"
-        )
-        stale["helpScoutCapabilities"].append(
-            "helpscout.support-context.masked-target-transcript.v1"
-        )
-        candidates.append(stale)
 
         non_string = self.valid_payload()
         non_string["helpScoutTargetOutputModes"][0] = 1
@@ -130,6 +184,16 @@ class RuntimePreflightTests(unittest.TestCase):
 
         for candidate in candidates:
             with self.subTest(candidate_type=type(candidate).__name__):
+                self.assertEqual(
+                    evaluate_runtime_contract(candidate),
+                    {"ok": False, "error": "runtime_contract_mismatch"},
+                )
+
+    def test_rejects_each_changed_gateway_tool_name(self):
+        for index, tool in enumerate(self.valid_payload()["gatewayTools"]):
+            candidate = self.valid_payload()
+            candidate["gatewayTools"][index] = f"{tool}_drift"
+            with self.subTest(tool=tool):
                 self.assertEqual(
                     evaluate_runtime_contract(candidate),
                     {"ok": False, "error": "runtime_contract_mismatch"},
@@ -207,7 +271,7 @@ class RuntimePreflightTests(unittest.TestCase):
                 {
                     "helpscout.support-context.typed-facts.v1",
                     "helpscout.support-context.complete-target.v1",
-                    "helpscout.support-context.readable-masked-target.v2",
+                    "helpscout.support-context.readable-masked-target.v3",
                     "helpscout.support-correlation.opaque-handle.v1",
                 }
             ),

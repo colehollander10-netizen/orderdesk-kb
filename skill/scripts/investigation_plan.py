@@ -58,6 +58,14 @@ STOP_ERRORS = {
     "handle_integrity_failed",
     "credential_boundary_failed",
 }
+ATTACHMENT_COVERAGE = {"complete", "partial", "none", "blocked", "unavailable"}
+ATTACHMENT_DISPOSITIONS = {
+    "complete": {"status": "complete", "reason": "attachment_evidence_complete"},
+    "partial": {"status": "unavailable", "reason": "attachment_understanding_incomplete"},
+    "none": {"status": "complete", "reason": "no_eligible_attachments"},
+    "blocked": {"status": "blocked", "reason": "attachment_evidence_blocked"},
+    "unavailable": {"status": "unavailable", "reason": "attachment_evidence_unavailable"},
+}
 COVERAGE_PRECEDENCE = {
     "skipped": 0,
     "planned": 1,
@@ -186,12 +194,18 @@ def validate_planning_state(payload: object) -> dict[str, Any]:
         "capabilities",
         "s3LogEligibility",
         "hardStopError",
+        "targetAttachmentCoverage",
+        "decisiveEvidenceAttachmentOnly",
     }
     data = _require_keys(payload, expected, "planning state")
     if isinstance(data["ticketNumber"], bool) or not isinstance(data["ticketNumber"], int) or data["ticketNumber"] <= 0:
         raise ValueError("ticketNumber must be a positive integer")
     if data["targetContextState"] not in {"full", "partial", "blocked"}:
         raise ValueError("targetContextState is invalid")
+    if data["targetAttachmentCoverage"] not in ATTACHMENT_COVERAGE:
+        raise ValueError("targetAttachmentCoverage is invalid")
+    if not isinstance(data["decisiveEvidenceAttachmentOnly"], bool):
+        raise ValueError("decisiveEvidenceAttachmentOnly must be boolean")
     if not isinstance(data["safeFacts"], list) or not isinstance(data["missingEvidence"], list):
         raise ValueError("safe facts and missing evidence must be lists")
     capabilities = data["capabilities"]
@@ -213,6 +227,8 @@ def validate_planning_state(payload: object) -> dict[str, Any]:
         "capabilities": copy.deepcopy(capabilities),
         "s3LogEligibility": _validate_s3_log_eligibility(data["s3LogEligibility"]),
         "hardStopError": data["hardStopError"],
+        "targetAttachmentCoverage": data["targetAttachmentCoverage"],
+        "decisiveEvidenceAttachmentOnly": data["decisiveEvidenceAttachmentOnly"],
     }
 
 
@@ -357,6 +373,36 @@ def plan_investigation(payload: object) -> dict:
     safe_error = "support_context_blocked" if data["targetContextState"] == "blocked" else data["hardStopError"]
     if safe_error:
         return stopped_plan(data, safe_error)
+    attachment_disposition = copy.deepcopy(
+        ATTACHMENT_DISPOSITIONS[data["targetAttachmentCoverage"]]
+    )
+    if (
+        data["decisiveEvidenceAttachmentOnly"]
+        and data["targetAttachmentCoverage"] != "complete"
+    ):
+        if data["targetAttachmentCoverage"] == "none":
+            attachment_disposition = {
+                "status": "unavailable",
+                "reason": "attachment_evidence_unavailable",
+            }
+        return {
+            "ticketNumber": data["ticketNumber"],
+            "status": "abstain",
+            "steps": [],
+            "claimDispositions": [
+                _disposition(
+                    claim,
+                    "unavailable",
+                    None,
+                    attachment_disposition["reason"],
+                )
+                for claim in data["missingEvidence"]
+            ],
+            "sourceCoverage": derive_source_coverage(data, []),
+            "targetAttachmentCoverage": data["targetAttachmentCoverage"],
+            "targetAttachmentDisposition": attachment_disposition,
+            "decisiveEvidenceAttachmentOnly": True,
+        }
     dispositions, steps = [], []
     for claim in sorted(data["missingEvidence"], key=lambda item: item["id"]):
         disposition, step = plan_claim(data, claim)
@@ -369,7 +415,16 @@ def plan_investigation(payload: object) -> dict:
         status = "complete"
     else:
         status = "abstain"
-    return {"ticketNumber": data["ticketNumber"], "status": status, "steps": steps, "claimDispositions": dispositions, "sourceCoverage": derive_source_coverage(data, dispositions)}
+    return {
+        "ticketNumber": data["ticketNumber"],
+        "status": status,
+        "steps": steps,
+        "claimDispositions": dispositions,
+        "sourceCoverage": derive_source_coverage(data, dispositions),
+        "targetAttachmentCoverage": data["targetAttachmentCoverage"],
+        "targetAttachmentDisposition": attachment_disposition,
+        "decisiveEvidenceAttachmentOnly": data["decisiveEvidenceAttachmentOnly"],
+    }
 
 
 def validate_result(result: object) -> dict[str, str]:

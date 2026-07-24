@@ -108,7 +108,7 @@ def check_help_scout_contract() -> None:
         (SKILL / "references" / "help-scout.md").read_text().split()
     )
     for label, text in (("skill", skill_text), ("reference", help_scout_text)):
-        for required in ("helpscout.support-context.typed-facts.v1", "helpscout.support-context.complete-target.v1", "helpscout.support-context.readable-masked-target.v2", "readable_masked_transcript", "typed_facts_fallback", "complete target conversation", "masked", "raw Help Scout prose never reaches the model", "technical blocker"):
+        for required in ("helpscout.support-context.typed-facts.v1", "helpscout.support-context.complete-target.v1", "helpscout.support-context.readable-masked-target.v3", "readable_masked_transcript", "typed_facts_fallback", "complete target conversation", "masked", "raw Help Scout prose never reaches the model", "target.attachmentEvidence", "excludedUnrecognizedThread", "exact receipt arithmetic", "technical blocker"):
             require(required in text, f"Help Scout contract missing from {label}: {required}")
     for required in ("helpscout.support-correlation.opaque-handle.v1", "opaque-correlation-envelope", "before accepting or passing a correlation handle", "mark correlation unavailable", "prior_case_handling", "Never create, save, or send a Help Scout draft"):
         require(required in help_scout_text or required in skill_text, f"Help Scout correlation contract missing: {required}")
@@ -170,7 +170,7 @@ def check_manifest_contract() -> dict:
     require(
         manifest.get("requiredTargetCapabilities") == [
             "helpscout.support-context.complete-target.v1",
-            "helpscout.support-context.readable-masked-target.v2",
+            "helpscout.support-context.readable-masked-target.v3",
         ],
         "Help Scout manifest target capabilities mismatch",
     )
@@ -191,7 +191,7 @@ def check_manifest_contract() -> dict:
             "rawProseModelVisible": False,
             "maskedTargetProseModelVisible": True,
             "internalNotesUsedAsEvidence": False,
-            "attachmentsAccessed": False,
+            "attachmentsAccessed": "eligible_target_attachments_only",
             "failClosed": True,
         },
         "Help Scout manifest safety contract is not closed",
