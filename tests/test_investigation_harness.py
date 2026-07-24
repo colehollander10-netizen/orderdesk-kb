@@ -141,6 +141,33 @@ class InvestigationHarnessTests(unittest.TestCase):
         for forbidden in ("ocr dump", "attachment.pdf", "https://", "sha256", "/tmp/", "bounding box"):
             self.assertNotIn(forbidden, result["brief"].casefold())
 
+    def test_decisive_incomplete_attachment_coverage_asks_one_focused_human_question(self):
+        for coverage, reason in (
+            ("partial", "attachment_understanding_incomplete"),
+            ("blocked", "attachment_evidence_blocked"),
+            ("unavailable", "attachment_evidence_unavailable"),
+            ("none", "attachment_evidence_unavailable"),
+        ):
+            with self.subTest(coverage=coverage):
+                result = run_case({
+                    "name": f"decisive-{coverage}",
+                    "claims": ["documented_behavior"],
+                    "targetAttachmentCoverage": coverage,
+                    "decisiveEvidenceAttachmentOnly": True,
+                    "responses": {},
+                })
+                self.assertEqual(result["plan"]["status"], "abstain")
+                self.assertEqual(result["plan"]["targetAttachmentDisposition"], {
+                    "status": "blocked" if coverage == "blocked" else "unavailable",
+                    "reason": reason,
+                })
+                self.assertEqual(
+                    result["nextStep"],
+                    "Ask a human reviewer: what visible error or event -> filters -> actions step does the attachment show?",
+                )
+                self.assertIn(f"Material ambiguity: {reason}", result["brief"])
+                self.assertNotIn("Obtain the smallest missing governed fact", result["brief"])
+
     def test_s3_logs_callback_gets_a_private_handle_that_never_enters_the_result(self):
         calls = []
 

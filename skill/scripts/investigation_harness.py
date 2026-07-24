@@ -108,6 +108,11 @@ def synthetic_evidence(case: dict, step: dict, outcome: str) -> list[dict]:
 
 def _route(case: dict, plan: dict, evidence_result: dict, findings: list[dict]) -> tuple[str, str]:
     if plan["status"] != "complete":
+        if plan.get("decisiveEvidenceAttachmentOnly"):
+            return (
+                "Insufficient evidence — abstain",
+                "Ask a human reviewer: what visible error or event -> filters -> actions step does the attachment show?",
+            )
         if case["name"] == "runtime_without_schema":
             return "Insufficient evidence — abstain", "Hand off to the S3 Logs contract owner"
         return "Insufficient evidence — abstain", "Obtain the smallest missing governed fact"

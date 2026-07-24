@@ -380,6 +380,11 @@ def plan_investigation(payload: object) -> dict:
         data["decisiveEvidenceAttachmentOnly"]
         and data["targetAttachmentCoverage"] != "complete"
     ):
+        if data["targetAttachmentCoverage"] == "none":
+            attachment_disposition = {
+                "status": "unavailable",
+                "reason": "attachment_evidence_unavailable",
+            }
         return {
             "ticketNumber": data["ticketNumber"],
             "status": "abstain",
@@ -396,6 +401,7 @@ def plan_investigation(payload: object) -> dict:
             "sourceCoverage": derive_source_coverage(data, []),
             "targetAttachmentCoverage": data["targetAttachmentCoverage"],
             "targetAttachmentDisposition": attachment_disposition,
+            "decisiveEvidenceAttachmentOnly": True,
         }
     dispositions, steps = [], []
     for claim in sorted(data["missingEvidence"], key=lambda item: item["id"]):
@@ -417,6 +423,7 @@ def plan_investigation(payload: object) -> dict:
         "sourceCoverage": derive_source_coverage(data, dispositions),
         "targetAttachmentCoverage": data["targetAttachmentCoverage"],
         "targetAttachmentDisposition": attachment_disposition,
+        "decisiveEvidenceAttachmentOnly": data["decisiveEvidenceAttachmentOnly"],
     }
 
 

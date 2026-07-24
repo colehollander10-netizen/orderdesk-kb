@@ -52,6 +52,7 @@ class InvestigationPlanTests(unittest.TestCase):
     def test_attachment_coverage_blocks_only_attachment_dependent_claims_and_rejects_contract_drift(self):
         payload = self.case("public_only")["input"]
         for coverage, reason in (
+            ("none", "attachment_evidence_unavailable"),
             ("blocked", "attachment_evidence_blocked"),
             ("unavailable", "attachment_evidence_unavailable"),
         ):
@@ -63,6 +64,7 @@ class InvestigationPlanTests(unittest.TestCase):
                 })
                 self.assertEqual(result["status"], "abstain")
                 self.assertEqual(result["targetAttachmentDisposition"]["reason"], reason)
+                self.assertEqual(result["targetAttachmentDisposition"]["status"], "unavailable" if coverage in {"none", "unavailable"} else "blocked")
         text_supported = self.module.plan_investigation({
             **payload,
             "targetAttachmentCoverage": "none",
