@@ -109,6 +109,11 @@ def synthetic_evidence(case: dict, step: dict, outcome: str) -> list[dict]:
 def _route(case: dict, plan: dict, evidence_result: dict, findings: list[dict]) -> tuple[str, str]:
     if plan["status"] != "complete":
         if plan.get("decisiveEvidenceAttachmentOnly"):
+            if plan["targetAttachmentCoverage"] == "none":
+                return (
+                    "Insufficient evidence — abstain",
+                    "Ask a human reviewer whether the missing sanitized visible error or event -> filters -> actions chain can be established without an available attachment.",
+                )
             return (
                 "Insufficient evidence — abstain",
                 "Ask a human reviewer: what visible error or event -> filters -> actions step does the attachment show?",

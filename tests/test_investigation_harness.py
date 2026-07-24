@@ -163,8 +163,14 @@ class InvestigationHarnessTests(unittest.TestCase):
                 })
                 self.assertEqual(
                     result["nextStep"],
-                    "Ask a human reviewer: what visible error or event -> filters -> actions step does the attachment show?",
+                    (
+                        "Ask a human reviewer whether the missing sanitized visible error or event -> filters -> actions chain can be established without an available attachment."
+                        if coverage == "none"
+                        else "Ask a human reviewer: what visible error or event -> filters -> actions step does the attachment show?"
+                    ),
                 )
+                if coverage == "none":
+                    self.assertNotIn("does the attachment show", result["nextStep"])
                 self.assertIn(f"Material ambiguity: {reason}", result["brief"])
                 self.assertNotIn("Obtain the smallest missing governed fact", result["brief"])
 
