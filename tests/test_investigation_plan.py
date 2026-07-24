@@ -171,6 +171,19 @@ class InvestigationPlanTests(unittest.TestCase):
             self.assertEqual(set(result["sourceCoverage"]), set(self.module.SOURCE_NAMES))
             self.assertTrue(all(item["status"] == "stopped" for item in result["sourceCoverage"].values()))
 
+    def test_runtime_contract_mismatch_is_a_hard_stop(self):
+        payload = self.case("public_only")["input"]
+        self.assertIn("runtime_contract_mismatch", self.module.STOP_ERRORS)
+
+        result = self.module.plan_investigation(
+            {**payload, "hardStopError": "runtime_contract_mismatch"}
+        )
+
+        self.assertEqual(result["status"], "stopped")
+        self.assertTrue(
+            all(item["status"] == "stopped" for item in result["sourceCoverage"].values())
+        )
+
     def test_invalid_ticket_and_private_fields_fail_closed(self):
         payload = self.case("public_only")["input"]
         for invalid in (0, -1, "12345", True):

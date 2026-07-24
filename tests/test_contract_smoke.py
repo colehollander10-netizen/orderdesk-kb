@@ -68,6 +68,41 @@ class ContractSmokePortabilityTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 1)
         self.assertIn("reply drafting boundary mismatch", completed.stderr)
 
+    def test_portable_smoke_requires_the_runtime_preflight_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            skill = self.make_clean_skill_copy(directory)
+            manifest = skill / "contracts" / "investigation.json"
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            payload.pop("runtimePreflight", None)
+            manifest.write_text(json.dumps(payload), encoding="utf-8")
+            completed = self.run_smoke(skill)
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("runtime preflight mismatch", completed.stderr)
+
+        with tempfile.TemporaryDirectory() as directory:
+            skill = self.make_clean_skill_copy(directory)
+            manifest = skill / "contracts" / "investigation.json"
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            payload["stopErrors"] = [
+                value
+                for value in payload["stopErrors"]
+                if value != "runtime_contract_mismatch"
+            ]
+            manifest.write_text(json.dumps(payload), encoding="utf-8")
+            completed = self.run_smoke(skill)
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("investigation stop errors mismatch", completed.stderr)
+
+        with tempfile.TemporaryDirectory() as directory:
+            skill = self.make_clean_skill_copy(directory)
+            manifest = skill / "contracts" / "runtime-preflight.json"
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            payload["gatewayTools"].remove("s3_log_lookup")
+            manifest.write_text(json.dumps(payload), encoding="utf-8")
+            completed = self.run_smoke(skill)
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("runtime preflight gateway tools mismatch", completed.stderr)
+
     def test_portable_smoke_rejects_reply_mode_or_missing_source_tool(self):
         with tempfile.TemporaryDirectory() as directory:
             skill = self.make_clean_skill_copy(directory)
@@ -95,11 +130,15 @@ class ContractSmokePortabilityTests(unittest.TestCase):
                 "capability": "helpscout.support-context.typed-facts.v1",
                 "targetCapabilities": [
                     "helpscout.support-context.complete-target.v1",
-                    "helpscout.support-context.masked-target-transcript.v1",
+                    "helpscout.support-context.readable-masked-target.v2",
+                ],
+                "targetOutputModes": [
+                    "readable_masked_transcript",
+                    "typed_facts_fallback",
                 ],
                 "correlationCapability": "helpscout.support-correlation.opaque-handle.v1",
                 "correlationOutputMode": "opaque-correlation-envelope",
-                "outputMode": "masked-target-transcript-and-typed-history-facts",
+                "outputMode": "readable-masked-target-or-typed-fallback-and-typed-history-facts",
                 "safety": {
                     "rawProseModelVisible": False,
                     "maskedTargetProseModelVisible": True,
@@ -154,11 +193,37 @@ class ContractSmokePortabilityTests(unittest.TestCase):
             connector = Path(directory) / "help-scout-mcp"
             executable = connector / "bin" / "help-scout-mcp.js"
             executable.parent.mkdir(parents=True)
-            executable.write_text("#!/usr/bin/env python3\nimport json\nprint(json.dumps({'schemaVersion': 1, 'capability': 'helpscout.support-context.typed-facts.v1', 'targetCapabilities': ['helpscout.support-context.masked-target-transcript.v1'], 'outputMode': 'masked-target-transcript-and-typed-history-facts', 'safety': {'rawProseModelVisible': False, 'maskedTargetProseModelVisible': True, 'internalNotesUsedAsEvidence': False, 'attachmentsAccessed': False, 'failClosed': True}}))\n", encoding="utf-8")
+            executable.write_text("#!/usr/bin/env python3\nimport json\nprint(json.dumps({'schemaVersion': 1, 'capability': 'helpscout.support-context.typed-facts.v1', 'targetCapabilities': ['helpscout.support-context.readable-masked-target.v2'], 'targetOutputModes': ['readable_masked_transcript', 'typed_facts_fallback'], 'outputMode': 'readable-masked-target-or-typed-fallback-and-typed-history-facts', 'safety': {'rawProseModelVisible': False, 'maskedTargetProseModelVisible': True, 'internalNotesUsedAsEvidence': False, 'attachmentsAccessed': False, 'failClosed': True}}))\n", encoding="utf-8")
             executable.chmod(0o755)
             completed = self.run_smoke(skill, "--help-scout-root", str(connector))
         self.assertEqual(completed.returncode, 1)
         self.assertIn("Help Scout target capabilities mismatch", completed.stderr)
+
+    def test_opt_in_help_scout_contract_rejects_target_output_mode_drift(self):
+        with tempfile.TemporaryDirectory() as directory:
+            skill = self.make_clean_skill_copy(directory)
+            connector = Path(directory) / "help-scout-mcp"
+            executable = connector / "bin" / "help-scout-mcp.js"
+            executable.parent.mkdir(parents=True)
+            executable.write_text(
+                "#!/usr/bin/env python3\nimport json\n"
+                "print(json.dumps({'schemaVersion': 1, "
+                "'capability': 'helpscout.support-context.typed-facts.v1', "
+                "'targetCapabilities': ['helpscout.support-context.complete-target.v1', 'helpscout.support-context.readable-masked-target.v2'], "
+                "'targetOutputModes': ['readable_masked_transcript'], "
+                "'outputMode': 'readable-masked-target-or-typed-fallback-and-typed-history-facts', "
+                "'safety': {'rawProseModelVisible': False, "
+                "'maskedTargetProseModelVisible': True, "
+                "'internalNotesUsedAsEvidence': False, "
+                "'attachmentsAccessed': False, 'failClosed': True}}))\n",
+                encoding="utf-8",
+            )
+            executable.chmod(0o755)
+            completed = self.run_smoke(
+                skill, "--help-scout-root", str(connector)
+            )
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("Help Scout target output modes mismatch", completed.stderr)
 
 
 if __name__ == "__main__":

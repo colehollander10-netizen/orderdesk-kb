@@ -6,6 +6,17 @@ Read this file before any `orderdesk_context` call. Use only the configured comp
 
 A positive ticket-number invocation authorizes only the conditional governed source set selected after fact-only Help Scout intake. Do not interrupt for per-source permission. Before every call, record the closed unresolved claim it can establish. Availability alone is not a reason to read a source.
 
+For a whole-product benchmark, run the exact content-free runtime handshake
+before selecting or opening a ticket. Send one JSON object on standard input
+to `python3 scripts/runtime_preflight.py` with exactly `helpScoutCapabilities`,
+`helpScoutTargetOutputModes`, `helpScoutCorrelationOutputMode`, and
+`gatewayTools` from the connected runtimes. These are capability names, target
+output modes, correlation output mode, and tool names only.
+`runtime_contract_mismatch` exits nonzero and stops the benchmark
+before Help Scout body intake. Restart in a fresh Codex task/runtime after a
+merge and repeat the handshake; a checkout or static CLI result cannot prove
+the already-running connector surface.
+
 ### Slack search
 
 Use `slack_search` only for `recent_team_context`. Query with safe product, provider, behavior, workflow, rule, or error-family terms from closed target facts. Never use raw ticket prose, customer data, operational identifiers, names, emails, domains, URLs, or opaque handles. Start with the gateway's smallest result cap and bounded time window when safe time context exists. files and attachments remain withheld.
@@ -30,7 +41,7 @@ Code-only supporting evidence does not establish deployment, runtime cause, desi
 
 ### S3 Logs
 
-`s3_log_lookup` is conditional, and only its synthetic vertical slice is proven today. Do not treat tool registration as live readiness. A normal runtime may return bounded unavailability until the correlation broker, approved locator/schema, and human evidence path are deployed.
+`s3_log_lookup` is conditional, and only its synthetic vertical slice is proven today. Tool registration does not prove S3 Logs readiness or authorize an object read. A normal runtime may return bounded unavailability until the correlation broker, approved locator/schema, and human evidence path are deployed.
 
 A governed S3 Logs lookup may run only for a concrete unresolved `runtime_event` claim when trustworthy correlation and a bounded time window are available, the lookup kind is enabled, and log evidence could materially change the route or answer. A Help Scout handle is only a correlation candidate: the owner-side orchestrator must resolve the eligible claim from its private session ledger and grant the candidate before lookup. The model cannot grant it or submit eligibility flags. Pass only the opaque `correlationHandle` and closed `lookupKind`; do not expose operational identifiers, timestamps, bucket, prefix, object key, query, range, or limit to the model. Retrieval uses the S3 API against the approved bucket and prefix; generic S3 browsing is forbidden. Do not substitute CloudWatch, Grafana, Loki, another AWS observability service, or arbitrary AWS/S3 access.
 
