@@ -126,6 +126,21 @@ class InvestigationHarnessTests(unittest.TestCase):
                 for forbidden in ("rawtickettext", "correlationhandle", "opaque-test-handle", "credential"):
                     self.assertNotIn(forbidden, json.dumps(result).casefold())
 
+    def test_brief_projects_attachment_coverage_without_attachment_artifacts(self):
+        case = {
+            "name": "attachment-coverage",
+            "claims": ["documented_behavior"],
+            "targetAttachmentCoverage": "partial",
+            "decisiveEvidenceAttachmentOnly": False,
+            "responses": {"public_kb": [{"outcome": "resolved"}]},
+        }
+        result = run_case(case)
+        self.assertIn("Help Scout attachments: partial", result["brief"])
+        self.assertIn("Attachment extraction: macOS native PDF text/OCR and layout", result["brief"])
+        self.assertIn("Material ambiguity: attachment_understanding_incomplete", result["brief"])
+        for forbidden in ("ocr dump", "attachment.pdf", "https://", "sha256", "/tmp/", "bounding box"):
+            self.assertNotIn(forbidden, result["brief"].casefold())
+
     def test_s3_logs_callback_gets_a_private_handle_that_never_enters_the_result(self):
         calls = []
 

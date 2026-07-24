@@ -76,6 +76,8 @@ def expand_case_input(case: dict) -> dict:
         },
         "s3LogEligibility": case.get("s3LogEligibility", default_eligibility),
         "hardStopError": None,
+        "targetAttachmentCoverage": case.get("targetAttachmentCoverage", "none"),
+        "decisiveEvidenceAttachmentOnly": case.get("decisiveEvidenceAttachmentOnly", False),
     }
 
 
@@ -246,11 +248,17 @@ def render_brief(plan: dict, evidence_result: dict, findings: list[dict], route:
         unknown = next((f"{item['claimId']}: {item['reason']}" for item in plan["claimDispositions"] if item["status"] != "resolved"), "No unresolved claim.")
     public_records = [item for item in evidence_result["evidence"] if item["source_type"] == "public_kb"]
     public_links = "\n".join(f"- {item['safe_reference']}: {item['claim_supported']}" for item in public_records) or "Not checked; no public-KB claim was selected."
+    attachment_disposition = plan["targetAttachmentDisposition"]
+    material_ambiguity = (
+        "none"
+        if attachment_disposition["status"] == "complete"
+        else attachment_disposition["reason"]
+    )
     return "\n\n".join((
         "**Support Investigation Brief**\n\n**Question / Scope**\nSanitized ticket investigation.",
         f"**Investigation Plan**\n{plan_lines}",
         f"**What I Checked**\n{checked_lines}",
-        f"**Coverage and Freshness**\n{coverage}",
+        f"**Coverage and Freshness**\nHelp Scout attachments: {plan['targetAttachmentCoverage']}\nAttachment extraction: macOS native PDF text/OCR and layout\nMaterial ambiguity: {material_ambiguity}\n{coverage}",
         f"**Route**\n{route}",
         f"**Source Ledger**\n{ledger}",
         f"**Evidence Status**\n{evidence_status}",

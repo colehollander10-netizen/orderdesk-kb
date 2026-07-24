@@ -8,7 +8,7 @@ Ticket-based sanitized support question; one task-scoped governed read-only inve
 
 **What I Checked**
 - Boundary: capability checks, read-only tools, caps, and stop conditions.
-- Help Scout target: checked, unavailable, or stopped - v2 capability, `readable_masked_transcript` or `typed_facts_fallback`, target bounds, context state, fallback state, and retrieval time. A fallback brief contains no transcript and, during a live canary, is stopped before private-source reads.
+- Help Scout target: checked, unavailable, or stopped - v3 capability, `readable_masked_transcript` or `typed_facts_fallback`, target bounds, context state, fallback state, and retrieval time. A fallback brief contains no transcript and, during a live canary, is stopped before private-source reads.
 - Help Scout history: checked, planned, skipped, unavailable, or stopped - `prior_case_handling` claim and fixed reason.
 - Public KB: checked, skipped, unavailable, or stopped - query category and cache health.
 - Slack: checked, skipped, unavailable, or stopped - bounded search and retrieval time.
@@ -17,6 +17,9 @@ Ticket-based sanitized support question; one task-scoped governed read-only inve
 - S3 Logs: checked, planned, skipped, unavailable, or stopped - closed eligibility result, minimized masked coverage, retrieval time, or exact failure reason; never imply retrieval occurred when it did not.
 
 **Coverage and Freshness**
+- Help Scout attachments: complete|partial|none|blocked|unavailable. This is a content-free coverage state, not a file inventory or attachment detail.
+- Attachment extraction: macOS native PDF text/OCR and layout. Never render OCR text, file names, IDs, URLs, hashes, paths, page boxes, or raw receipt objects.
+- Material ambiguity: none|<closed reason>. A partial, blocked, or unavailable decisive attachment retains one closed ambiguity; it never becomes a generic KB or private-source search.
 - Public KB freshness: health checked at; newest and oldest `fetched_at`; cache acquisition does not prove the live page is unchanged; or not checked.
 - Every source: exact checked, planned, skipped, unavailable, or stopped status and fixed reason.
 
@@ -52,4 +55,4 @@ One investigation step, named owner handoff, or focused non-identifying question
 **Reply Boundary**
 Customer-reply drafting is outside `/orderdesk`; no customer-facing wording was produced.
 
-Safe private references are included only when needed for internal follow-up; never include raw prose, customer identity, operational identifiers, message/page dumps, unrestricted code, raw logs, opaque handles, or the human-only exact-log evidence artifact. Repetition is not a vote; authority and date only prioritize conflict review.
+Safe private references are included only when needed for internal follow-up; never include raw prose, customer identity, operational identifiers, message/page dumps, unrestricted code, raw logs, opaque handles, attachment file names/IDs/URLs/hashes/paths, OCR dumps, page boxes, raw receipt objects, or the human-only exact-log evidence artifact. Repetition is not a vote; authority and date only prioritize conflict review.
