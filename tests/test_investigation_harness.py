@@ -120,6 +120,14 @@ class InvestigationHarnessTests(unittest.TestCase):
                 self.assertEqual(result["claims"], result["plan"]["claimDispositions"])
                 if result["plan"]["status"] != "stopped":
                     self.assertIn("**Reply Boundary**", result["brief"])
+                    self.assertEqual(
+                        result["briefDecision"]["next_step_owner"],
+                        result["nextStepOwner"],
+                    )
+                    self.assertEqual(
+                        result["briefDecision"]["route"],
+                        result["route"],
+                    )
                     for record in result["evidence"]:
                         self.assertEqual(set(record), {"id", "claim_key", "claim_value", "summary", "source_type", "safe_reference", "source_date", "retrieved_at", "authority", "claim_supported", "coverage"})
                 self.assertNotIn("opaque-test-handle", json.dumps(result))
@@ -135,9 +143,10 @@ class InvestigationHarnessTests(unittest.TestCase):
             "responses": {"public_kb": [{"outcome": "resolved"}]},
         }
         result = run_case(case)
-        self.assertIn("Help Scout attachments: partial", result["brief"])
-        self.assertIn("Attachment extraction: macOS native PDF text/OCR and layout", result["brief"])
-        self.assertIn("Material ambiguity: attachment_understanding_incomplete", result["brief"])
+        self.assertIn("Attachment evidence remains incomplete.", result["brief"])
+        self.assertNotIn("Help Scout attachments:", result["brief"])
+        self.assertNotIn("Attachment extraction:", result["brief"])
+        self.assertNotIn("Material ambiguity:", result["brief"])
         for forbidden in ("ocr dump", "attachment.pdf", "https://", "sha256", "/tmp/", "bounding box"):
             self.assertNotIn(forbidden, result["brief"].casefold())
 
@@ -171,7 +180,8 @@ class InvestigationHarnessTests(unittest.TestCase):
                 )
                 if coverage == "none":
                     self.assertNotIn("does the attachment show", result["nextStep"])
-                self.assertIn(f"Material ambiguity: {reason}", result["brief"])
+                self.assertIn("Attachment evidence remains incomplete.", result["brief"])
+                self.assertIn(reason, result["briefDecision"]["unknowns"])
                 self.assertNotIn("Obtain the smallest missing governed fact", result["brief"])
 
     def test_s3_logs_callback_gets_a_private_handle_that_never_enters_the_result(self):
@@ -217,13 +227,29 @@ class InvestigationHarnessTests(unittest.TestCase):
             self.assertEqual(conflict["preference_status"], "preferred_for_review")
             self.assertEqual(conflict["preferred_source_id"], "notion-evidence")
 
-    def test_brief_renderer_contains_required_safe_sections_and_boundary(self):
+    def test_brief_renderer_contains_support_sections_and_hides_operator_ledger(self):
         result = run_case(next(item for item in CASES if item["name"] == "target_kb"))
         brief = result["brief"]
-        for section in ("**Investigation Plan**", "**What I Checked**", "**Coverage and Freshness**", "**Evidence Status**", "**Source Ledger**", "**Conflicts**", "**Unknowns**", "**Public KB Links**", "**Suggested Next Step**", "**Reply Boundary**"):
+        for section in ("**What the customer needs**", "**What I found**", "**What this means**", "**Recommended next step**", "**Reply Boundary**"):
             self.assertIn(section, brief)
+        for operator_section in ("**Investigation Plan**", "**What I Checked**", "**Coverage and Freshness**", "**Source Ledger**", "**Conflicts**", "**Unknowns**"):
+            self.assertNotIn(operator_section, brief)
         self.assertIn("Customer-reply drafting is outside `/orderdesk`; no customer-facing wording was produced.", brief)
         self.assertIn("synthetic-public_kb", brief)
+        self.assertEqual(
+            set(result["briefDecision"]),
+            {
+                "sanitized_question",
+                "claim_dispositions",
+                "source_coverage",
+                "accepted_evidence",
+                "conflicts",
+                "unknowns",
+                "findings",
+                "route",
+                "next_step_owner",
+            },
+        )
         self.assertNotIn("correlationHandle", brief)
         self.assertNotIn("rawTicketText", brief)
 
@@ -289,7 +315,7 @@ class InvestigationHarnessTests(unittest.TestCase):
         self.assertIn("30-day window", result["brief"])
         self.assertIn("supporting", result["brief"])
         self.assertIn("does not establish policy, deployment, runtime cause, or a confirmed fix", result["brief"])
-        self.assertIn("public_kb: skipped (not_needed_for_named_claim)", result["brief"])
+        self.assertNotIn("public_kb: skipped (not_needed_for_named_claim)", result["brief"])
         coverage_dump = "help_scout_target: checked (target_facts_received); helpscout_history: skipped"
         self.assertEqual(result["brief"].count(coverage_dump), 0)
 
