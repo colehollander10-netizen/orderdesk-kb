@@ -35,9 +35,26 @@ Record the title query, result cap, selected pages, block caps, dates, and retri
 
 Use `code_context` only for `implementation_behavior`, with a bounded safe product or behavior question. The gateway searches an approved default-branch snapshot and returns a small number of passages with repository, path, line, and immutable commit citations. Do not request a branch, tag, commit, history, blocked path, secret-bearing file, or deprecated code-search endpoint.
 
+If the first result exposes a named validation method or guard that directly controls
+the unresolved behavior but does not show its condition or safe error family,
+make at most one bounded follow-up for that exact safe symbol and behavior
+before freezing the decision frame. This is a continuation of the same
+`implementation_behavior` claim, not permission to widen the source plan. Do
+not follow generic dependencies, neighboring features, or an open-ended call
+graph.
+
 Code is implementation evidence for the cited commit. It does not prove deployment, runtime state, customer configuration, incident cause, contractual behavior, or current live availability. A governed failure means `Code context remained unchecked`; do not infer absence or behavior.
 
-Code-only supporting evidence does not establish deployment, runtime cause, design intent, or that a code change is warranted. It may resolve what the cited commit implements, but choose **Insufficient evidence — abstain** until an intended-process source or runtime evidence establishes the missing claim. Hand the cited passages to Engineering to confirm intent and the deployed commit.
+Code-only supporting evidence does not establish deployment, runtime cause,
+design intent, or that a code change is warranted. When it establishes a
+deterministic guard but the actual account, order, or input values are unknown,
+route to the smallest missing fact. Use **Store configuration / Rule Builder**
+when Support can verify those values directly, or **Logs or runtime
+investigation** when only runtime evidence can establish them. Keep the cause
+unconfirmed. Escalate to Engineering only if the compared values satisfy the
+guard and the operation still fails, or the deployed behavior differs from the
+cited commit. Code-only evidence must never become an automatic **Likely code
+change** route.
 
 ### S3 Logs
 

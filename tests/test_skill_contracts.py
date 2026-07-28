@@ -23,6 +23,20 @@ class MultiSourceBriefContractTests(unittest.TestCase):
             self.assertIn(phrase, governed)
         self.assertNotIn("aws_log_lookup", governed)
 
+    def test_code_context_follows_one_decisive_guard_before_freezing(self):
+        governed = " ".join(GOVERNED_CONTEXT.read_text().split())
+        for phrase in (
+            "named validation method or guard",
+            "at most one bounded follow-up",
+            "continuation of the same `implementation_behavior` claim",
+            "before freezing the decision frame",
+            "Do not follow generic dependencies",
+            "route to the smallest missing fact",
+            "Support can verify",
+            "Escalate to Engineering only if",
+        ):
+            self.assertIn(phrase, governed)
+
     def test_support_brief_renders_from_a_hidden_converged_decision(self):
         template = INTERNAL_BRIEF.read_text()
         manifest = json.loads(

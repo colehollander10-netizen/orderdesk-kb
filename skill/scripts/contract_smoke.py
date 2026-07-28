@@ -75,6 +75,8 @@ def check_text_contract() -> None:
         "slack_search",
         "notion_search",
         "code_context",
+        "at most one bounded follow-up",
+        "before freezing the decision frame",
         "s3_log_lookup",
         "evidence and decision convergence, not prose convergence",
         "freeze the internal decision frame before writing",
