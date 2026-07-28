@@ -253,6 +253,30 @@ class InvestigationHarnessTests(unittest.TestCase):
         self.assertNotIn("correlationHandle", brief)
         self.assertNotIn("rawTicketText", brief)
 
+    def test_equivalent_reordered_claims_produce_the_same_decision_frame(self):
+        first = run_case(
+            {
+                "name": "reordered-first",
+                "claims": ["documented_behavior", "recent_team_context"],
+                "responses": {
+                    "public_kb": [{"outcome": "unresolved"}],
+                    "slack": [{"outcome": "unresolved"}],
+                },
+            }
+        )
+        second = run_case(
+            {
+                "name": "reordered-second",
+                "claims": ["recent_team_context", "documented_behavior"],
+                "responses": {
+                    "public_kb": [{"outcome": "unresolved"}],
+                    "slack": [{"outcome": "unresolved"}],
+                },
+            }
+        )
+
+        self.assertEqual(first["briefDecision"], second["briefDecision"])
+
     def test_missing_schema_and_hard_stop_never_continue_private_calls_or_render(self):
         missing_schema = run_case(next(item for item in CASES if item["name"] == "runtime_without_schema"))
         self.assertEqual(missing_schema["plan"]["sourceCoverage"]["s3_logs"], {"status": "unavailable", "reason": "log_kind_unavailable"})

@@ -1,56 +1,27 @@
 # Support Investigation Brief
 
-**Question / Scope**
-Ticket-based sanitized support question; one task-scoped governed read-only investigation.
+The complete investigation plan, capability and masking checks, source coverage,
+freshness, normalized evidence ledger, conflicts, and stop receipts are kept in the background.
+If a source limitation changes the conclusion, explain that
+limitation plainly where it matters.
 
-**Investigation Plan**
-- Claim A - closed claim kind - source selected - why that source can establish it.
+**What the customer needs**
+One short, sanitized description of the problem and the outcome the customer is
+trying to reach.
 
-**What I Checked**
-- Boundary: capability checks, read-only tools, caps, and stop conditions.
-- Help Scout target: checked, unavailable, or stopped - v3 capability, `readable_masked_transcript` or `typed_facts_fallback`, target bounds, context state, fallback state, and retrieval time. A fallback brief contains no transcript and, during a live canary, is stopped before private-source reads.
-- Help Scout history: checked, planned, skipped, unavailable, or stopped - `prior_case_handling` claim and fixed reason.
-- Public KB: checked, skipped, unavailable, or stopped - query category and cache health.
-- Slack: checked, skipped, unavailable, or stopped - bounded search and retrieval time.
-- Notion: checked, skipped, unavailable, or stopped - title query and retrieval time.
-- Code context: checked, skipped, unavailable, or stopped - repository, path, line, immutable commit, and retrieval time.
-- S3 Logs: checked, planned, skipped, unavailable, or stopped - closed eligibility result, minimized masked coverage, retrieval time, or exact failure reason; never imply retrieval occurred when it did not.
+**What I found**
+Lead with the useful evidence. Give each finding its source name and safe reference
+naturally beside it. Include date, authority, or bounded coverage
+only when it changes how much Support should rely on the finding.
 
-**Coverage and Freshness**
-- Help Scout attachments: complete|partial|none|blocked|unavailable. This is a content-free coverage state, not a file inventory or attachment detail.
-- Attachment extraction: macOS native PDF text/OCR and layout. Never render OCR text, file names, IDs, URLs, hashes, paths, page boxes, or raw receipt objects.
-- Material ambiguity: none|<closed reason>. A partial, blocked, or unavailable decisive attachment retains one closed ambiguity; it never becomes a generic KB or private-source search.
-- Public KB freshness: health checked at; newest and oldest `fetched_at`; cache acquisition does not prove the live page is unchanged; or not checked.
-- Every source: exact checked, planned, skipped, unavailable, or stopped status and fixed reason.
+**What this means**
+Separate established behavior, the best-supported explanation, conflicts, and
+what remains unknown. Do not turn implementation-at-a-commit into deployment,
+or discussion into policy.
 
-**Route**
-Exactly one six-route label and one evidence-based sentence.
-
-**Source Ledger**
-- Source A - source type - safe reference - source date or unknown - retrieval time - explicit authority - claim supported - bounded coverage.
-
-**Evidence Status**
-- Documented behavior: directly sourced behavior or not established.
-- Possible explanation: calibrated synthesis, not proven cause.
-- Not established: configuration, runtime, account, or causality facts still missing.
-
-**Likely Pattern**
-One short synthesis with calibrated confidence, or not established.
-
-**Similar Tickets**
-- Include only when Help Scout history was checked; date/status/freshness and current-source caveat.
-
-**Conflicts**
-- Claim key - competing safe references and values - preferred source with authority/date reason, or unresolved.
-
-**Unknowns**
-- Smallest missing fact or unavailable governed source that blocks certainty.
-
-**Public KB Links**
-- Public title - URL - why it matters.
-
-**Suggested Next Step**
-One investigation step, named owner handoff, or focused non-identifying question.
+**Recommended next step**
+Give one route and one concrete next action with a clear owner. If the evidence
+is insufficient, say what smallest governed fact or owner is needed next.
 
 **Reply Boundary**
 Customer-reply drafting is outside `/orderdesk`; no customer-facing wording was produced.

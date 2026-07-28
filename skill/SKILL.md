@@ -56,9 +56,29 @@ The model-visible S3 result must remain minimized and masked. Exact bounded log 
 
 Stop before merge, replan, or rendering on `runtime_contract_mismatch`, `policy_denied`, `scope_denied`, `unsafe_query`, `masking_failed`, `audit_failed`, `handle_integrity_failed`, or `credential_boundary_failed`. Normal bounded unavailability is recorded truthfully.
 
+## Converge before writing
+
+The goal is evidence and decision convergence, not prose convergence.
+The skill must freeze the internal decision frame before writing: the sanitized question,
+claim dispositions, complete source coverage, accepted evidence, conflicts,
+unknowns, one route, and the next-step owner. Natural wording may vary, but it
+must not change its accepted evidence, authority, route, or next-step owner.
+
+Keep the investigation plan, capability checks, masking receipts, source
+coverage ledger, and stop machinery available for governance and review, but do
+not narrate them as the default Support experience. When those gates pass,
+routine safety machinery stays in the background. Surface a safety or
+availability problem only when it materially limits the conclusion or stops the
+investigation.
+
 ## Render one internal brief
 
-Follow [references/internal-brief.md](references/internal-brief.md). Include the Investigation Plan, complete coverage, freshness, one route, normalized Source Ledger, conflicts, unknowns, and one next step. Keep documented behavior, possible explanation, and not established separate. State a likely cause only when direct claim-specific evidence supports it.
+Follow [references/internal-brief.md](references/internal-brief.md). Render from
+the frozen decision frame using the five Support-facing sections. Place each
+useful source name and safe reference beside the finding it supports rather
+than producing a separate operator ledger. Keep documented behavior, possible
+explanation, and not established separate. State a likely cause only when
+direct claim-specific evidence supports it.
 
 A resolved retrieval claim is not automatically a resolved Support answer. Preserve the source that resolved each claim and apply its authority when choosing the route. In particular, Slack-only supporting evidence stays a possible explanation and must abstain unless the governed result establishes an explicit decision and owner or another authoritative or runtime source confirms the action.
 

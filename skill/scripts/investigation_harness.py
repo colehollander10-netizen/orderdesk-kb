@@ -25,6 +25,30 @@ AUTHORITY = {
     "code_context": "supporting",
     "s3_logs": "supporting",
 }
+SOURCE_LABEL = {
+    "help_scout": "Help Scout",
+    "public_kb": "Public KB",
+    "slack": "Slack",
+    "notion": "Notion",
+    "code_context": "Code context",
+    "s3_logs": "S3 Logs",
+}
+ROUTE_OWNER = {
+    "Support can answer": "Support",
+    "Store configuration / Rule Builder": "Support configuration",
+    "Logs or runtime investigation": "Engineering runtime",
+    "Likely code change": "Engineering",
+    "Manual admin action / product gap": "Product administration",
+    "Insufficient evidence — abstain": "Source owner",
+}
+ROUTE_DISPLAY = {
+    "Support can answer": "Support has enough to answer",
+    "Store configuration / Rule Builder": "Check the store setup or Rule Builder",
+    "Logs or runtime investigation": "Engineering should check the runtime path",
+    "Likely code change": "Engineering review",
+    "Manual admin action / product gap": "Product or admin follow-up",
+    "Insufficient evidence — abstain": "More evidence is needed",
+}
 
 
 def _callback_envelope(value: object) -> dict[str, Any]:
@@ -172,34 +196,12 @@ def _route(case: dict, plan: dict, evidence_result: dict, findings: list[dict]) 
     return "Support can answer", "Use the bounded evidence in the internal investigation"
 
 
-def render_brief(plan: dict, evidence_result: dict, findings: list[dict], route: str, next_step: str) -> str:
-    plan_lines = "\n".join(
-        f"- {item['claimId']}: {item['status']}; source: {item['source'] or 'none'}; reason: {item['reason']}"
-        for item in plan["claimDispositions"]
-    )
-    checked_lines = "\n".join(
-        f"- {source}: {item['status']} ({item['reason']})"
-        for source, item in plan["sourceCoverage"].items()
-        if item["status"] in {"checked", "unavailable", "stopped"}
-    )
-    checked_lines = checked_lines or "- No governed source completed."
-    coverage_lines = []
-    for source, disposition in plan["sourceCoverage"].items():
-        source_type = SOURCE_TYPE.get(source)
-        records = [item for item in evidence_result["evidence"] if item["source_type"] == source_type]
-        if records:
-            details = "; ".join(
-                f"date {item['source_date']}; retrieved {item['retrieved_at']}; {item['coverage']}"
-                for item in records
-            )
-            coverage_lines.append(f"- {source}: {disposition['status']} ({disposition['reason']}); {details}")
-        else:
-            coverage_lines.append(f"- {source}: {disposition['status']} ({disposition['reason']})")
-    coverage = "\n".join(coverage_lines)
-    ledger = "\n".join(
-        f"- {item['source_type']} | {item['safe_reference']} | {item['source_date']} | {item['retrieved_at']} | {item['authority']} | {item['claim_supported']} | {item['summary']}"
-        for item in evidence_result["evidence"]
-    ) or "- No governed evidence established."
+def _interpretation(
+    plan: dict,
+    evidence_result: dict,
+    findings: list[dict],
+    route: str,
+) -> dict[str, str]:
     mismatch = next(
         (
             finding
@@ -222,7 +224,6 @@ def render_brief(plan: dict, evidence_result: dict, findings: list[dict], route:
         conflicts = "Slack describes a recent informal workaround; Notion establishes the intended process. The informal workaround differs from the authoritative process."
     else:
         conflicts = "; ".join(f"{item['claim_key']}: {', '.join(item['competing_claim_values'])}; refs {', '.join(item['source_ids'])}; {item['reason']}" for item in evidence_result["conflicts"]) or "None."
-    similar = "History checked: bounded historical evidence is not current policy." if plan["sourceCoverage"]["helpscout_history"]["status"] == "checked" else "History not checked."
     code_only_supporting = route == "Insufficient evidence — abstain" and evidence_result["evidence"] and all(
         item["source_type"] == "code_context" and item["authority"] == "supporting"
         for item in evidence_result["evidence"]
@@ -254,30 +255,154 @@ def render_brief(plan: dict, evidence_result: dict, findings: list[dict], route:
         unknown = "Authoritative process or runtime confirmation remains missing."
     else:
         likely_pattern = " ".join(item["summary"] for item in evidence_result["evidence"]) or "Not established."
-        evidence_status = "Documented behavior, possible explanation, and not established remain separate."
-        unknown = next((f"{item['claimId']}: {item['reason']}" for item in plan["claimDispositions"] if item["status"] != "resolved"), "No unresolved claim.")
-    public_records = [item for item in evidence_result["evidence"] if item["source_type"] == "public_kb"]
-    public_links = "\n".join(f"- {item['safe_reference']}: {item['claim_supported']}" for item in public_records) or "Not checked; no public-KB claim was selected."
-    attachment_disposition = plan["targetAttachmentDisposition"]
-    material_ambiguity = (
-        "none"
-        if attachment_disposition["status"] == "complete"
-        else attachment_disposition["reason"]
+        evidence_status = (
+            "The finding is established only within the role of the cited source."
+            if evidence_result["evidence"]
+            else "There is not enough evidence to establish what happened or why."
+        )
+        unknown = next(
+            (
+                "The smallest claim-specific governed fact is still missing."
+                for item in plan["claimDispositions"]
+                if item["status"] != "resolved"
+            ),
+            "No unresolved claim.",
+        )
+    return {
+        "evidence_status": evidence_status,
+        "likely_pattern": likely_pattern,
+        "conflicts": conflicts,
+        "unknown": unknown,
+    }
+
+
+def _next_step_owner(route: str, next_step: str) -> str:
+    if "S3 Logs contract owner" in next_step:
+        return "S3 Logs contract owner"
+    if "Engineering" in next_step:
+        return "Engineering"
+    if "human reviewer" in next_step:
+        return "Support reviewer"
+    if "process owner" in next_step:
+        return "Process owner"
+    return ROUTE_OWNER[route]
+
+
+def build_brief_decision(
+    planning_state: dict,
+    plan: dict,
+    evidence_result: dict,
+    findings: list[dict],
+    route: str,
+    next_step: str,
+    interpretation: dict[str, str],
+) -> dict:
+    claim_kind_by_id = {
+        item["id"]: item["kind"]
+        for item in planning_state["missingEvidence"]
+    }
+    claim_dispositions = sorted(
+        (
+            {
+                "claim_kind": claim_kind_by_id[item["claimId"]],
+                "status": item["status"],
+                "source": item["source"],
+                "reason": item["reason"],
+                "skipped_sources": sorted(item["skippedSources"]),
+            }
+            for item in plan["claimDispositions"]
+        ),
+        key=lambda item: (
+            item["claim_kind"],
+            item["status"],
+            item["source"] or "",
+            item["reason"],
+        ),
     )
+    unknowns = [
+        item["reason"]
+        for item in plan["claimDispositions"]
+        if item["status"] != "resolved"
+    ]
+    attachment_disposition = plan["targetAttachmentDisposition"]
+    if attachment_disposition["status"] != "complete":
+        unknowns.append(attachment_disposition["reason"])
+    if interpretation["unknown"] != "No unresolved claim.":
+        unknowns.append(interpretation["unknown"])
+    return {
+        "sanitized_question": {
+            **planning_state["sanitizedQuestion"],
+            "safeTerms": sorted(planning_state["sanitizedQuestion"]["safeTerms"]),
+        },
+        "claim_dispositions": claim_dispositions,
+        "source_coverage": plan["sourceCoverage"],
+        "accepted_evidence": sorted(
+            evidence_result["evidence"],
+            key=lambda item: (
+                item["claim_key"],
+                item["source_type"],
+                item["safe_reference"],
+                item["source_date"],
+            ),
+        ),
+        "conflicts": sorted(
+            evidence_result["conflicts"],
+            key=lambda item: (item["claim_key"], tuple(item["source_ids"])),
+        ),
+        "unknowns": sorted(set(unknowns)),
+        "findings": findings,
+        "route": route,
+        "next_step_owner": _next_step_owner(route, next_step),
+    }
+
+
+def render_brief(
+    sanitized_question: dict,
+    plan: dict,
+    evidence_result: dict,
+    route: str,
+    next_step: str,
+    interpretation: dict[str, str],
+) -> str:
+    observed = sanitized_question["observedBehavior"].replace("_", " ")
+    expected = sanitized_question["expectedBehavior"].replace("_", " ")
+    workflow = sanitized_question["workflow"].replace("_", " ")
+    evidence_lines = "\n".join(
+        (
+            f"- **{SOURCE_LABEL[item['source_type']]}** — "
+            f"`{item['safe_reference']}` ({item['source_date']}; "
+            f"{item['authority']}; {item['coverage']}): {item['summary']}"
+        )
+        for item in evidence_result["evidence"]
+    ) or "No governed source established the unresolved claim."
+    attachment_note = (
+        "\n\nAttachment evidence remains incomplete."
+        if plan["targetAttachmentDisposition"]["status"] != "complete"
+        else ""
+    )
+    meaning_parts = [
+        interpretation["likely_pattern"],
+        interpretation["evidence_status"],
+    ]
+    if interpretation["conflicts"] != "None.":
+        meaning_parts.append(interpretation["conflicts"])
+    if interpretation["unknown"] != "No unresolved claim.":
+        meaning_parts.append(interpretation["unknown"])
+    meaning = " ".join(meaning_parts)
+    owner = _next_step_owner(route, next_step)
     return "\n\n".join((
-        "**Support Investigation Brief**\n\n**Question / Scope**\nSanitized ticket investigation.",
-        f"**Investigation Plan**\n{plan_lines}",
-        f"**What I Checked**\n{checked_lines}",
-        f"**Coverage and Freshness**\nHelp Scout attachments: {plan['targetAttachmentCoverage']}\nAttachment extraction: macOS native PDF text/OCR and layout\nMaterial ambiguity: {material_ambiguity}\n{coverage}",
-        f"**Route**\n{route}",
-        f"**Source Ledger**\n{ledger}",
-        f"**Evidence Status**\n{evidence_status}",
-        f"**Likely Pattern**\n{likely_pattern}",
-        f"**Similar Tickets**\n{similar}",
-        f"**Conflicts**\n{conflicts}",
-        f"**Unknowns**\n{unknown}",
-        f"**Public KB Links**\n{public_links}",
-        f"**Suggested Next Step**\n{next_step}",
+        "**Support Investigation Brief**",
+        (
+            "**What the customer needs**\n"
+            f"The customer needs help with {observed} in the {workflow} workflow "
+            f"and expects {expected}."
+        ),
+        f"**What I found**\n{evidence_lines}{attachment_note}",
+        f"**What this means**\n{meaning}",
+        (
+            "**Recommended next step**\n"
+            f"**{ROUTE_DISPLAY[route]}** — {next_step}. Owner: {owner}."
+        ),
         "**Reply Boundary**\nCustomer-reply drafting is outside `/orderdesk`; no customer-facing wording was produced.",
     ))
 
@@ -324,5 +449,35 @@ def run_case(case: dict, tool_runner: dict[str, Callable[..., dict]] | None = No
     evidence_result = evaluate_evidence(evidence, plan["sourceCoverage"])
     findings = derive_cross_source_findings(evidence_result["evidence"])
     route, next_step = _route(case, plan, evidence_result, findings)
-    brief = render_brief(plan, evidence_result, findings, route, next_step)
-    return {"plan": plan, "sourceCoverage": plan["sourceCoverage"], "evidence": evidence_result["evidence"], "evidenceResult": evidence_result, "findings": findings, "callTrace": trace, "claims": plan["claimDispositions"], "route": route, "nextStep": next_step, "brief": brief}
+    interpretation = _interpretation(plan, evidence_result, findings, route)
+    brief_decision = build_brief_decision(
+        state,
+        plan,
+        evidence_result,
+        findings,
+        route,
+        next_step,
+        interpretation,
+    )
+    brief = render_brief(
+        state["sanitizedQuestion"],
+        plan,
+        evidence_result,
+        route,
+        next_step,
+        interpretation,
+    )
+    return {
+        "plan": plan,
+        "sourceCoverage": plan["sourceCoverage"],
+        "evidence": evidence_result["evidence"],
+        "evidenceResult": evidence_result,
+        "findings": findings,
+        "callTrace": trace,
+        "claims": plan["claimDispositions"],
+        "route": route,
+        "nextStep": next_step,
+        "nextStepOwner": brief_decision["next_step_owner"],
+        "briefDecision": brief_decision,
+        "brief": brief,
+    }
