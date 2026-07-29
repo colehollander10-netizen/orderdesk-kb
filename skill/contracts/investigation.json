@@ -15,7 +15,12 @@
   "claimDerivation": {"question": [{"productArea": "order_import", "workflow": "provider_to_order_desk", "observedBehavior": "orders_delayed", "expectedBehavior": "orders_imported", "claimKinds": ["implementation_behavior", "recent_team_context", "runtime_event"], "logLookupKind": "order_import"}], "safeFact": {"key": "missing_evidence_code", "values": {"documented_behavior": "documented_behavior", "prior_case_handling": "prior_case_handling", "recent_team_context": "recent_team_context", "intended_process": "intended_process", "implementation_behavior": "implementation_behavior", "runtime_order_import": "runtime_event"}}},
   "runtimePreflight": {"scope": "whole_product_benchmark", "before": "ticket_selection_or_body_read", "onMismatch": "runtime_contract_mismatch", "contentFree": true},
   "routes": ["Support can answer", "Store configuration / Rule Builder", "Logs or runtime investigation", "Likely code change", "Manual admin action / product gap", "Insufficient evidence — abstain"],
-  "requiredBriefSections": ["Question / Scope", "Investigation Plan", "What I Checked", "Coverage and Freshness", "Route", "Source Ledger", "Evidence Status", "Likely Pattern", "Similar Tickets", "Conflicts", "Unknowns", "Public KB Links", "Suggested Next Step", "Reply Boundary"],
+  "decisionFrame": {
+    "backgroundOnly": true,
+    "naturalLanguageMayVary": true,
+    "fields": ["sanitized_question", "claim_dispositions", "source_coverage", "accepted_evidence", "conflicts", "unknowns", "findings", "route", "next_step_category", "next_step", "next_step_owner"]
+  },
+  "requiredBriefSections": ["What the customer needs", "What I found", "What this means", "Recommended next step", "Reply Boundary"],
   "stopErrors": ["support_context_blocked", "runtime_contract_mismatch", "policy_denied", "scope_denied", "unsafe_query", "masking_failed", "audit_failed", "handle_integrity_failed", "credential_boundary_failed"],
   "safety": {"governedToolsOnly": true, "rawPrivateContentModelVisible": false, "operationalIdentifiersModelVisible": false, "opaqueHandleTransitOnly": true, "opaqueHandlesFinalBriefVisible": false, "rawLogLinesModelVisible": false, "humanOnlyExactLogEvidenceSeparate": true, "privateSourceSubagents": false, "writesAllowed": false, "genericLogBrowsingAllowed": false}
 }

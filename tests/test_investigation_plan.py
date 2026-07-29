@@ -125,16 +125,22 @@ class InvestigationPlanTests(unittest.TestCase):
         self.assertEqual(history["sourceCoverage"]["helpscout_history"]["status"], "planned")
 
     def test_unresolved_result_replans_then_exhausts_authoritative_route(self):
-        merged = self.module.merge_source_result(self.case("full_context_slack")["input"], {"claimId": "c1", "source": "slack", "outcome": "unresolved"})
+        payload = self.case("full_context_slack")["input"]
+        frozen = self.module.freeze_claim_ledger(payload)
+        self.module.authorize_source_step(payload, frozen, "c1", "slack")
+        merged = self.module.merge_source_result(payload, {"claimId": "c1", "source": "slack", "outcome": "unresolved"}, frozen)
         self.assertEqual(merged["steps"], [])
         self.assertEqual(merged["status"], "abstain")
         self.assertEqual(merged["sourceCoverage"]["slack"]["status"], "checked")
 
     def test_resolved_claim_retains_the_source_that_resolved_it(self):
         payload = self.case("full_context_slack")["input"]
+        frozen = self.module.freeze_claim_ledger(payload)
+        self.module.authorize_source_step(payload, frozen, "c1", "slack")
         merged = self.module.merge_source_result(
             payload,
             {"claimId": "c1", "source": "slack", "outcome": "resolved"},
+            frozen,
         )
         self.assertEqual(
             merged["claimDispositions"][0],
@@ -149,14 +155,347 @@ class InvestigationPlanTests(unittest.TestCase):
 
     def test_unavailable_result_abstains_and_merge_rejects_wrong_step(self):
         payload = self.case("full_context_slack")["input"]
-        merged = self.module.merge_source_result(payload, {"claimId": "c1", "source": "slack", "outcome": "unavailable"})
+        frozen = self.module.freeze_claim_ledger(payload)
+        self.module.authorize_source_step(payload, frozen, "c1", "slack")
+        merged = self.module.merge_source_result(payload, {"claimId": "c1", "source": "slack", "outcome": "unavailable"}, frozen)
         self.assertEqual(merged["status"], "abstain")
         self.assertEqual(merged["sourceCoverage"]["slack"]["status"], "unavailable")
         with self.assertRaisesRegex(ValueError, "currently planned step"):
-            self.module.merge_source_result(payload, {"claimId": "c1", "source": "notion", "outcome": "resolved"})
+            self.module.merge_source_result(payload, {"claimId": "c1", "source": "notion", "outcome": "resolved"}, frozen)
+
+    def test_source_call_authorization_rejects_an_unplanned_claim_before_the_call(self):
+        authorize = getattr(self.module, "authorize_source_step", None)
+        freeze = getattr(self.module, "freeze_claim_ledger", None)
+        self.assertIsNotNone(authorize, "planner must expose pre-call authorization")
+        self.assertIsNotNone(freeze, "planner must expose claim-ledger freezing")
+        payload = self.case("mixed_smallest_set")["input"]
+        frozen_ledger = freeze(payload)
+
+        self.assertEqual(
+            authorize(payload, frozen_ledger, "c1", "public_kb"),
+            {
+                "claimId": "c1",
+                "claimKind": "documented_behavior",
+                "source": "public_kb",
+            },
+        )
+
+        attempted = {
+            **payload,
+            "missingEvidence": [
+                {
+                    **payload["missingEvidence"][0],
+                    "attempts": [{"source": "public_kb", "outcome": "unresolved"}],
+                },
+                {
+                    **payload["missingEvidence"][1],
+                    "attempts": [{"source": "code_context", "outcome": "resolved"}],
+                },
+                payload["missingEvidence"][2],
+                {
+                    "id": "new-intent-claim",
+                    "kind": "intended_process",
+                    "status": "unresolved",
+                    "safeQueryAvailable": True,
+                    "attempts": [],
+                },
+            ],
+        }
+        with self.assertRaisesRegex(ValueError, "claim ledger changed after freeze"):
+            authorize(
+                attempted,
+                frozen_ledger,
+                "new-intent-claim",
+                "notion",
+            )
+
+        query_mutations = [
+            {
+                **payload,
+                "safeFacts": [
+                    *payload["safeFacts"],
+                    {"key": "provider_family", "value": "newly-added-after-freeze"},
+                ],
+            },
+            {
+                **payload,
+                "sanitizedQuestion": {
+                    **payload["sanitizedQuestion"],
+                    "safeTerms": [
+                        *payload["sanitizedQuestion"]["safeTerms"],
+                        "newly-added-after-freeze",
+                    ],
+                },
+            },
+            {
+                **payload,
+                "sanitizedQuestion": {
+                    **payload["sanitizedQuestion"],
+                    "observedBehavior": "changed_after_freeze",
+                },
+            },
+        ]
+        for mutation in query_mutations:
+            with self.subTest(mutation=mutation):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "claim ledger changed after freeze",
+                ):
+                    authorize(mutation, frozen_ledger, "c1", "public_kb")
+
+    def test_frozen_authorization_rejects_gate_widening_and_attempt_rollback(self):
+        authorize = self.module.authorize_source_step
+        freeze = self.module.freeze_claim_ledger
+
+        slack = self.case("full_context_slack")["input"]
+        disabled_slack = {
+            **slack,
+            "capabilities": {**slack["capabilities"], "slack": False},
+        }
+        with self.assertRaisesRegex(ValueError, "changed after freeze"):
+            authorize(
+                {**disabled_slack, "capabilities": {**disabled_slack["capabilities"], "slack": True}},
+                freeze(disabled_slack),
+                "c1",
+                "slack",
+            )
+
+        stopped = {**slack, "hardStopError": "masking_failed"}
+        with self.assertRaisesRegex(ValueError, "changed after freeze"):
+            authorize(
+                {**stopped, "hardStopError": None},
+                freeze(stopped),
+                "c1",
+                "slack",
+            )
+
+        runtime = self.case("s3_runtime")["input"]
+        ineligible = {
+            **runtime,
+            "s3LogEligibility": {
+                **runtime["s3LogEligibility"],
+                "trustedCorrelation": False,
+            },
+        }
+        with self.assertRaisesRegex(ValueError, "changed after freeze"):
+            authorize(
+                {
+                    **ineligible,
+                    "s3LogEligibility": {
+                        **ineligible["s3LogEligibility"],
+                        "trustedCorrelation": True,
+                    },
+                },
+                freeze(ineligible),
+                "c1",
+                "s3_logs",
+            )
+
+        mixed = self.case("mixed_smallest_set")["input"]
+        frozen = freeze(mixed)
+        authorize(mixed, frozen, "c1", "public_kb")
+        after_public = {
+            **mixed,
+            "missingEvidence": [
+                {
+                    **mixed["missingEvidence"][0],
+                    "attempts": [{"source": "public_kb", "outcome": "unresolved"}],
+                },
+                *mixed["missingEvidence"][1:],
+            ],
+        }
+        authorize(after_public, frozen, "c2", "code_context")
+        rolled_back = {
+            **mixed,
+            "missingEvidence": [
+                mixed["missingEvidence"][0],
+                {
+                    **mixed["missingEvidence"][1],
+                    "attempts": [{"source": "code_context", "outcome": "unresolved"}],
+                },
+                mixed["missingEvidence"][2],
+            ],
+        }
+        with self.assertRaisesRegex(ValueError, "changed after freeze"):
+            authorize(rolled_back, frozen, "c1", "public_kb")
+
+        changed_outcome = {
+            **after_public,
+            "missingEvidence": [
+                {
+                    **after_public["missingEvidence"][0],
+                    "attempts": [{"source": "public_kb", "outcome": "resolved"}],
+                },
+                {
+                    **after_public["missingEvidence"][1],
+                    "attempts": [{"source": "code_context", "outcome": "unresolved"}],
+                },
+                after_public["missingEvidence"][2],
+            ],
+        }
+        with self.assertRaisesRegex(ValueError, "changed after freeze"):
+            authorize(changed_outcome, frozen, "c1", "public_kb")
+
+        for mutation in [
+            {"targetContextState": "blocked"},
+            {"targetAttachmentCoverage": "partial"},
+            {"decisiveEvidenceAttachmentOnly": True},
+        ]:
+            with self.subTest(mutation=mutation):
+                payload = self.case("full_context_slack")["input"]
+                frozen_payload = {**payload, **mutation}
+                with self.assertRaisesRegex(ValueError, "changed after freeze"):
+                    authorize(
+                        payload,
+                        freeze(frozen_payload),
+                        "c1",
+                        "slack",
+                    )
+
+    def test_frozen_authorization_rejects_reenabling_a_disabled_source(self):
+        payload = self.case("full_context_slack")["input"]
+        payload = {
+            **payload,
+            "missingEvidence": [
+                payload["missingEvidence"][0],
+                {**payload["missingEvidence"][0], "id": "c2"},
+            ],
+        }
+        frozen = self.module.freeze_claim_ledger(payload)
+        self.module.authorize_source_step(payload, frozen, "c1", "slack")
+        merged = self.module.merge_source_result(
+            payload,
+            {"claimId": "c1", "source": "slack", "outcome": "unavailable"},
+            frozen,
+        )
+        disabled = merged["planningState"]
+        self.assertFalse(disabled["capabilities"]["slack"])
+
+        reenabled = {
+            **disabled,
+            "capabilities": {**disabled["capabilities"], "slack": True},
+        }
+        with self.assertRaisesRegex(ValueError, "changed after freeze"):
+            self.module.authorize_source_step(
+                reenabled,
+                frozen,
+                "c2",
+                "slack",
+            )
+
+    def test_decisive_code_guard_allows_exactly_one_bounded_followup(self):
+        payload = self.case("mixed_smallest_set")["input"]
+        payload = {
+            **payload,
+            "missingEvidence": [payload["missingEvidence"][1]],
+        }
+        frozen = self.module.freeze_claim_ledger(payload)
+        first = self.module.authorize_source_step(
+            payload,
+            frozen,
+            "c2",
+            "code_context",
+        )
+        self.assertNotIn("continuation", first)
+
+        merged = self.module.merge_source_result(
+            payload,
+            {
+                "claimId": "c2",
+                "source": "code_context",
+                "outcome": "unresolved",
+                "decisiveGuard": {
+                    "symbol": "assertCurrencyMatchesOrder",
+                    "missing": "condition_or_safe_error_family",
+                },
+            },
+            frozen,
+        )
+        followup_state = merged["planningState"]
+        self.assertEqual(
+            merged["steps"],
+            [{
+                "claimId": "c2",
+                "claimKind": "implementation_behavior",
+                "source": "code_context",
+                "continuation": "decisive_code_guard",
+                "guardSymbol": "assertCurrencyMatchesOrder",
+            }],
+        )
+        self.assertEqual(
+            self.module.authorize_source_step(
+                followup_state,
+                frozen,
+                "c2",
+                "code_context",
+            ),
+            merged["steps"][0],
+        )
+
+        completed = self.module.merge_source_result(
+            followup_state,
+            {
+                "claimId": "c2",
+                "source": "code_context",
+                "outcome": "unresolved",
+            },
+            frozen,
+        )
+        self.assertEqual(completed["status"], "abstain")
+        with self.assertRaisesRegex(ValueError, "currently planned step"):
+            self.module.authorize_source_step(
+                completed["planningState"],
+                frozen,
+                "c2",
+                "code_context",
+            )
+
+        replay_frozen = self.module.freeze_claim_ledger(payload)
+        self.module.authorize_source_step(
+            payload,
+            replay_frozen,
+            "c2",
+            "code_context",
+        )
+        replay_merged = self.module.merge_source_result(
+            payload,
+            {
+                "claimId": "c2",
+                "source": "code_context",
+                "outcome": "unresolved",
+                "decisiveGuard": {
+                    "symbol": "assertCurrencyMatchesOrder",
+                    "missing": "condition_or_safe_error_family",
+                },
+            },
+            replay_frozen,
+        )
+        self.module.authorize_source_step(
+            replay_merged["planningState"],
+            replay_frozen,
+            "c2",
+            "code_context",
+        )
+        with self.assertRaisesRegex(ValueError, "decisive guard follow-up"):
+            self.module.merge_source_result(
+                replay_merged["planningState"],
+                {
+                    "claimId": "c2",
+                    "source": "code_context",
+                    "outcome": "unresolved",
+                    "decisiveGuard": {
+                        "symbol": "anotherGuard",
+                        "missing": "condition_or_safe_error_family",
+                    },
+                },
+                replay_frozen,
+            )
 
     def test_stopped_result_promotes_every_disposition_to_stopped(self):
-        merged = self.module.merge_source_result(self.case("full_context_slack")["input"], {"claimId": "c1", "source": "slack", "outcome": "stopped", "safeError": "masking_failed"})
+        payload = self.case("full_context_slack")["input"]
+        frozen = self.module.freeze_claim_ledger(payload)
+        self.module.authorize_source_step(payload, frozen, "c1", "slack")
+        merged = self.module.merge_source_result(payload, {"claimId": "c1", "source": "slack", "outcome": "stopped", "safeError": "masking_failed"}, frozen)
         self.assertEqual(merged["status"], "stopped")
         self.assertTrue(all(item["status"] == "stopped" for item in merged["sourceCoverage"].values()))
         self.assertTrue(all(item["status"] == "stopped" for item in merged["claimDispositions"]))

@@ -113,17 +113,18 @@ class BriefEvidenceContractTests(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("YYYY-MM-DD", completed.stderr)
 
-    def test_internal_brief_requires_source_ledger_and_conflicts(self):
+    def test_internal_brief_preserves_evidence_roles_without_showing_operator_ledger(self):
         template = BRIEF_TEMPLATE.read_text(encoding="utf-8")
-        self.assertIn("**Source Ledger**", template)
-        self.assertIn("**Conflicts**", template)
-        self.assertIn("source type", template)
-        self.assertIn("source date", template)
-        self.assertIn("explicit authority", template)
+        self.assertNotIn("**Source Ledger**", template)
+        self.assertNotIn("**Conflicts**", template)
+        self.assertIn("normalized evidence ledger", template)
+        self.assertIn("source name and safe reference", template)
+        self.assertIn("date, authority, or bounded coverage", template)
+        self.assertIn("established behavior", template)
+        self.assertIn("what remains unknown", template)
         self.assertIn("Repetition is not a vote", template)
-        self.assertIn("Help Scout attachments: complete|partial|none|blocked|unavailable", template)
-        self.assertIn("Attachment extraction: macOS native PDF text/OCR and layout", template)
-        self.assertIn("Material ambiguity: none|<closed reason>", template)
+        self.assertIn("If a source limitation changes the conclusion", template)
+        self.assertIn("attachment file names/IDs/URLs/hashes/paths", template)
 
     def test_every_governed_source_type_is_accepted(self):
         records = [evidence_record(f"source_{index}", "supported", source_type=source_type) | {"claim_key": f"claim_{index}"} for index, source_type in enumerate(("help_scout", "public_kb", "slack", "notion", "code_context", "s3_logs"), start=1)]

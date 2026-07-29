@@ -59,6 +59,25 @@ class InvestigationHarnessTests(unittest.TestCase):
         ]
 
     @staticmethod
+    def order_source_structure_evidence():
+        commit = "2222222222222222222222222222222222222222"
+        return [
+            {
+                "id": "code-order-source-fields",
+                "claim_key": "implementation_behavior",
+                "claim_value": "order_source_and_integration_source_are_distinct_nullable_fields",
+                "summary": "The order model stores order source and integration source as distinct nullable fields.",
+                "source_type": "code_context",
+                "safe_reference": f"synthetic/orderdesk-v3:src/Domain/Order/Entity/Order.php:104-108@{commit}",
+                "source_date": "2026-07-28",
+                "retrieved_at": "2026-07-28T18:00:00Z",
+                "authority": "supporting",
+                "claim_supported": "Order source and integration source are structurally distinct at the cited commit.",
+                "coverage": "Approved default-branch snapshot; one bounded entity passage.",
+            }
+        ]
+
+    @staticmethod
     def notion_code_mismatch_evidence():
         notion = {
             "id": "notion-retry-policy",
@@ -120,6 +139,14 @@ class InvestigationHarnessTests(unittest.TestCase):
                 self.assertEqual(result["claims"], result["plan"]["claimDispositions"])
                 if result["plan"]["status"] != "stopped":
                     self.assertIn("**Reply Boundary**", result["brief"])
+                    self.assertEqual(
+                        result["briefDecision"]["next_step_owner"],
+                        result["nextStepOwner"],
+                    )
+                    self.assertEqual(
+                        result["briefDecision"]["route"],
+                        result["route"],
+                    )
                     for record in result["evidence"]:
                         self.assertEqual(set(record), {"id", "claim_key", "claim_value", "summary", "source_type", "safe_reference", "source_date", "retrieved_at", "authority", "claim_supported", "coverage"})
                 self.assertNotIn("opaque-test-handle", json.dumps(result))
@@ -135,9 +162,10 @@ class InvestigationHarnessTests(unittest.TestCase):
             "responses": {"public_kb": [{"outcome": "resolved"}]},
         }
         result = run_case(case)
-        self.assertIn("Help Scout attachments: partial", result["brief"])
-        self.assertIn("Attachment extraction: macOS native PDF text/OCR and layout", result["brief"])
-        self.assertIn("Material ambiguity: attachment_understanding_incomplete", result["brief"])
+        self.assertIn("Attachment evidence remains incomplete.", result["brief"])
+        self.assertNotIn("Help Scout attachments:", result["brief"])
+        self.assertNotIn("Attachment extraction:", result["brief"])
+        self.assertNotIn("Material ambiguity:", result["brief"])
         for forbidden in ("ocr dump", "attachment.pdf", "https://", "sha256", "/tmp/", "bounding box"):
             self.assertNotIn(forbidden, result["brief"].casefold())
 
@@ -171,7 +199,8 @@ class InvestigationHarnessTests(unittest.TestCase):
                 )
                 if coverage == "none":
                     self.assertNotIn("does the attachment show", result["nextStep"])
-                self.assertIn(f"Material ambiguity: {reason}", result["brief"])
+                self.assertIn("Attachment evidence remains incomplete.", result["brief"])
+                self.assertIn(reason, result["briefDecision"]["unknowns"])
                 self.assertNotIn("Obtain the smallest missing governed fact", result["brief"])
 
     def test_s3_logs_callback_gets_a_private_handle_that_never_enters_the_result(self):
@@ -217,15 +246,63 @@ class InvestigationHarnessTests(unittest.TestCase):
             self.assertEqual(conflict["preference_status"], "preferred_for_review")
             self.assertEqual(conflict["preferred_source_id"], "notion-evidence")
 
-    def test_brief_renderer_contains_required_safe_sections_and_boundary(self):
+    def test_brief_renderer_contains_support_sections_and_hides_operator_ledger(self):
         result = run_case(next(item for item in CASES if item["name"] == "target_kb"))
         brief = result["brief"]
-        for section in ("**Investigation Plan**", "**What I Checked**", "**Coverage and Freshness**", "**Evidence Status**", "**Source Ledger**", "**Conflicts**", "**Unknowns**", "**Public KB Links**", "**Suggested Next Step**", "**Reply Boundary**"):
+        manifest = json.loads(
+            (ROOT / "skill" / "contracts" / "investigation.json").read_text()
+        )
+        for section in ("**What the customer needs**", "**What I found**", "**What this means**", "**Recommended next step**", "**Reply Boundary**"):
             self.assertIn(section, brief)
+        for operator_section in ("**Investigation Plan**", "**What I Checked**", "**Coverage and Freshness**", "**Source Ledger**", "**Conflicts**", "**Unknowns**"):
+            self.assertNotIn(operator_section, brief)
         self.assertIn("Customer-reply drafting is outside `/orderdesk`; no customer-facing wording was produced.", brief)
         self.assertIn("synthetic-public_kb", brief)
+        self.assertEqual(
+            set(result["briefDecision"]),
+            set(manifest["decisionFrame"]["fields"]),
+        )
+        self.assertEqual(result["nextStep"], result["briefDecision"]["next_step"])
+        self.assertIn(result["nextStep"], brief)
+        self.assertIn(result["briefDecision"]["next_step_category"], {
+            "support_response",
+            "store_configuration",
+            "runtime_investigation",
+            "engineering_handoff",
+            "manual_admin_action",
+            "obtain_governed_evidence",
+            "human_evidence_review",
+            "contract_owner_handoff",
+            "support_verification",
+            "engineering_verification",
+            "process_owner_confirmation",
+        })
         self.assertNotIn("correlationHandle", brief)
         self.assertNotIn("rawTicketText", brief)
+
+    def test_equivalent_reordered_claims_produce_the_same_decision_frame(self):
+        first = run_case(
+            {
+                "name": "reordered-first",
+                "claims": ["documented_behavior", "recent_team_context"],
+                "responses": {
+                    "public_kb": [{"outcome": "unresolved"}],
+                    "slack": [{"outcome": "unresolved"}],
+                },
+            }
+        )
+        second = run_case(
+            {
+                "name": "reordered-second",
+                "claims": ["recent_team_context", "documented_behavior"],
+                "responses": {
+                    "public_kb": [{"outcome": "unresolved"}],
+                    "slack": [{"outcome": "unresolved"}],
+                },
+            }
+        )
+
+        self.assertEqual(first["briefDecision"], second["briefDecision"])
 
     def test_missing_schema_and_hard_stop_never_continue_private_calls_or_render(self):
         missing_schema = run_case(next(item for item in CASES if item["name"] == "runtime_without_schema"))
@@ -289,7 +366,7 @@ class InvestigationHarnessTests(unittest.TestCase):
         self.assertIn("30-day window", result["brief"])
         self.assertIn("supporting", result["brief"])
         self.assertIn("does not establish policy, deployment, runtime cause, or a confirmed fix", result["brief"])
-        self.assertIn("public_kb: skipped (not_needed_for_named_claim)", result["brief"])
+        self.assertNotIn("public_kb: skipped (not_needed_for_named_claim)", result["brief"])
         coverage_dump = "help_scout_target: checked (target_facts_received); helpscout_history: skipped"
         self.assertEqual(result["brief"].count(coverage_dump), 0)
 
@@ -305,6 +382,57 @@ class InvestigationHarnessTests(unittest.TestCase):
                     }
                 },
             )
+
+    def test_tool_callback_evidence_cannot_widen_the_authorized_source_or_frozen_claim(self):
+        case = {"name": "bound-evidence", "claims": ["implementation_behavior"], "responses": {}}
+        forged = dict(
+            self.recent_slack_evidence(),
+            claim_key="claim_absent_from_frozen_ledger",
+            claim_id="c1",
+            claim_kind="implementation_behavior",
+        )
+        with self.assertRaises(ValueError):
+            run_case(
+                case,
+                {
+                    "code_context": lambda step, handle: {
+                        "outcome": "resolved",
+                        "evidence": [forged],
+                    }
+                },
+            )
+
+        wrong_claim = dict(
+            self.code_retry_evidence()[0],
+            claim_id="c999",
+            claim_kind="implementation_behavior",
+        )
+        with self.assertRaises(ValueError):
+            run_case(
+                case,
+                {
+                    "code_context": lambda step, handle: {
+                        "outcome": "resolved",
+                        "evidence": [wrong_claim],
+                    }
+                },
+            )
+
+        valid = dict(
+            self.code_retry_evidence()[0],
+            claim_id="c1",
+            claim_kind="implementation_behavior",
+        )
+        result = run_case(
+            case,
+            {
+                "code_context": lambda step, handle: {
+                    "outcome": "resolved",
+                    "evidence": [valid],
+                }
+            },
+        )
+        self.assertEqual(result["evidence"], [self.code_retry_evidence()[0]])
 
     def test_code_only_evidence_is_synthesized_but_cannot_claim_deployment_or_a_change(self):
         case = {
@@ -342,6 +470,36 @@ class InvestigationHarnessTests(unittest.TestCase):
         )
         for record in self.code_retry_evidence():
             self.assertIn(record["safe_reference"], result["brief"])
+
+    def test_structural_code_evidence_routes_a_support_verifiable_missing_fact_to_support(self):
+        case = {
+            "name": "order_source_structural_evidence",
+            "claims": ["documented_behavior", "implementation_behavior"],
+            "supportVerifiableMissingFact": "incoming_order_source_presence",
+            "responses": {
+                "public_kb": [{"outcome": "resolved"}],
+                "code_context": [
+                    {
+                        "outcome": "resolved",
+                        "evidence": self.order_source_structure_evidence(),
+                    }
+                ],
+            },
+        }
+
+        result = run_case(case)
+
+        self.assertEqual(
+            [item["source"] for item in result["callTrace"]],
+            ["help_scout_target", "public_kb", "code_context"],
+        )
+        self.assertEqual(result["route"], "Insufficient evidence — abstain")
+        self.assertEqual(
+            result["nextStep"],
+            "Have Support determine whether the incoming custom-app order contains a source value before escalating",
+        )
+        self.assertEqual(result["nextStepOwner"], "Support")
+        self.assertNotIn("notion", [item["source"] for item in result["callTrace"]])
 
     def test_code_and_slack_supporting_evidence_cannot_route_to_a_code_change(self):
         case = {

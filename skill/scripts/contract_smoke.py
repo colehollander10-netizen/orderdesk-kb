@@ -75,9 +75,16 @@ def check_text_contract() -> None:
         "slack_search",
         "notion_search",
         "code_context",
+        "at most one bounded follow-up",
+        "before freezing the decision frame",
         "s3_log_lookup",
-        "Investigation Plan",
-        "Source Ledger",
+        "evidence and decision convergence, not prose convergence",
+        "freeze the internal decision frame before writing",
+        "routine safety machinery stays in the background",
+        "What the customer needs",
+        "What I found",
+        "What this means",
+        "Recommended next step",
         "Support can answer",
         "Insufficient evidence — abstain",
         "Customer-reply drafting is outside `/orderdesk`",
@@ -141,17 +148,12 @@ def check_multisource_reporting_contract() -> None:
         )
 
     for required in (
-        "Investigation Plan",
-        "Help Scout target:",
-        "Help Scout history:",
-        "Public KB:",
-        "Slack:",
-        "Notion:",
-        "Code context:",
-        "S3 Logs:",
-        "checked, planned, skipped, unavailable, or stopped",
-        "retrieval time",
-        "Public KB freshness",
+        "What the customer needs",
+        "What I found",
+        "What this means",
+        "Recommended next step",
+        "kept in the background",
+        "source name and safe reference",
         "Reply Boundary",
     ):
         require(required in brief_text, f"brief coverage contract missing: {required}")
@@ -208,7 +210,8 @@ def check_investigation_manifest() -> dict:
     require(manifest.get("claimSourceRoutes") == {"documented_behavior": ["public_kb"], "prior_case_handling": ["helpscout_history"], "recent_team_context": ["slack"], "intended_process": ["notion"], "implementation_behavior": ["code_context"], "runtime_event": ["s3_logs"]}, "investigation ordered routes mismatch")
     require(manifest.get("runtimePreflight") == {"scope": "whole_product_benchmark", "before": "ticket_selection_or_body_read", "onMismatch": "runtime_contract_mismatch", "contentFree": True}, "runtime preflight mismatch")
     require(manifest.get("replyDrafting") == "outside_skill", "reply drafting boundary mismatch")
-    require(manifest.get("requiredBriefSections") == ["Question / Scope", "Investigation Plan", "What I Checked", "Coverage and Freshness", "Route", "Source Ledger", "Evidence Status", "Likely Pattern", "Similar Tickets", "Conflicts", "Unknowns", "Public KB Links", "Suggested Next Step", "Reply Boundary"], "investigation brief sections mismatch")
+    require(manifest.get("decisionFrame") == {"backgroundOnly": True, "naturalLanguageMayVary": True, "fields": ["sanitized_question", "claim_dispositions", "source_coverage", "accepted_evidence", "conflicts", "unknowns", "findings", "route", "next_step_category", "next_step", "next_step_owner"]}, "investigation decision frame mismatch")
+    require(manifest.get("requiredBriefSections") == ["What the customer needs", "What I found", "What this means", "Recommended next step", "Reply Boundary"], "investigation brief sections mismatch")
     require(manifest.get("stopErrors") == ["support_context_blocked", "runtime_contract_mismatch", "policy_denied", "scope_denied", "unsafe_query", "masking_failed", "audit_failed", "handle_integrity_failed", "credential_boundary_failed"], "investigation stop errors mismatch")
     require(manifest.get("safety") == {"governedToolsOnly": True, "rawPrivateContentModelVisible": False, "operationalIdentifiersModelVisible": False, "opaqueHandleTransitOnly": True, "opaqueHandlesFinalBriefVisible": False, "rawLogLinesModelVisible": False, "humanOnlyExactLogEvidenceSeparate": True, "privateSourceSubagents": False, "writesAllowed": False, "genericLogBrowsingAllowed": False}, "investigation safety contract mismatch")
     correlation = json.loads(HELP_SCOUT_CORRELATION_MANIFEST.read_text(encoding="utf-8"))

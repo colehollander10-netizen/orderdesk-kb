@@ -102,3 +102,12 @@ Use exactly one route for an internal support brief:
 
 The route names the next evidence or owner. It does not prove root cause,
 authorize the source, or permit the action.
+
+For a field-attribution mismatch, structural code evidence may show that two
+fields are distinct without establishing creation-time assignment, defaults, or
+runtime values. If Support can inspect the authorized current order, request, or
+integration record to determine whether the incoming value is present, keep the
+route **Insufficient evidence — abstain** and make that one observable fact the
+Support-owned next step. Escalate to Engineering only if the value is present
+and the product ignores or replaces it, or if only Engineering can obtain the
+fact.

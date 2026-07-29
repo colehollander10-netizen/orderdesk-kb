@@ -23,13 +23,66 @@ class MultiSourceBriefContractTests(unittest.TestCase):
             self.assertIn(phrase, governed)
         self.assertNotIn("aws_log_lookup", governed)
 
-    def test_brief_records_plan_and_complete_source_disposition(self):
+    def test_code_context_follows_one_decisive_guard_before_freezing(self):
+        governed = " ".join(GOVERNED_CONTEXT.read_text().split())
+        for phrase in (
+            "named validation method or guard",
+            "at most one bounded follow-up",
+            "continuation of the same `implementation_behavior` claim",
+            "before freezing the decision frame",
+            "Do not follow generic dependencies",
+            "route to the smallest missing fact",
+            "Support can verify",
+            "Escalate to Engineering only if",
+        ):
+            self.assertIn(phrase, governed)
+
+    def test_support_brief_renders_from_a_hidden_converged_decision(self):
         template = INTERNAL_BRIEF.read_text()
-        self.assertIn("**Investigation Plan**", template)
-        for source in ("Help Scout target", "Help Scout history", "Public KB", "Slack", "Notion", "Code context", "S3 Logs"):
-            self.assertIn(f"- {source}:", template)
-        self.assertIn("checked, planned, skipped, unavailable, or stopped", template)
-        self.assertIn("retrieval time", template)
+        manifest = json.loads(
+            (ROOT / "skill" / "contracts" / "investigation.json").read_text()
+        )
+        self.assertEqual(
+            manifest["decisionFrame"],
+            {
+                "backgroundOnly": True,
+                "naturalLanguageMayVary": True,
+                "fields": [
+                    "sanitized_question",
+                    "claim_dispositions",
+                    "source_coverage",
+                    "accepted_evidence",
+                    "conflicts",
+                    "unknowns",
+                    "findings",
+                    "route",
+                    "next_step_category",
+                    "next_step",
+                    "next_step_owner",
+                ],
+            },
+        )
+        self.assertEqual(
+            manifest["requiredBriefSections"],
+            [
+                "What the customer needs",
+                "What I found",
+                "What this means",
+                "Recommended next step",
+                "Reply Boundary",
+            ],
+        )
+        for section in manifest["requiredBriefSections"]:
+            self.assertIn(f"**{section}**", template)
+        for operator_section in (
+            "**Investigation Plan**",
+            "**What I Checked**",
+            "**Coverage and Freshness**",
+            "**Source Ledger**",
+        ):
+            self.assertNotIn(operator_section, template)
+        self.assertIn("kept in the background", template)
+        self.assertIn("source name and safe reference", template)
         self.assertIn("Customer-reply drafting is outside `/orderdesk`", template)
 
     def test_cross_source_findings_preserve_claim_roles_instead_of_global_winners(self):

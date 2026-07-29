@@ -39,6 +39,18 @@ Then send exactly one JSON string plus a newline to stdin. Use:
 - search for comparisons, broad research, weak results, or absence claims;
 - triage for a sufficiently specified, non-identifying support problem.
 
+For field meaning, attribution, or API-created-object questions, use at most
+three narrow queries in this order:
+
+1. the exact safe UI or native field label;
+2. the exact workflow direction and API or import path;
+3. one final narrow synonym query needed to support a bounded absence statement.
+
+Inspect and replan after each query. Stop when the documented-behavior claim is
+resolved or the bounded search has established the smallest documentation gap.
+One broad noisy query cannot establish that the KB has no relevant coverage.
+Do not let a tangential high-similarity result choose the product concept.
+
 Never pass private ticket text or customer details. Apply the intake gate in
 [product-diagnostics.md](product-diagnostics.md) before troubleshooting.
 
