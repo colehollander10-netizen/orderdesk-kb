@@ -125,16 +125,22 @@ class InvestigationPlanTests(unittest.TestCase):
         self.assertEqual(history["sourceCoverage"]["helpscout_history"]["status"], "planned")
 
     def test_unresolved_result_replans_then_exhausts_authoritative_route(self):
-        merged = self.module.merge_source_result(self.case("full_context_slack")["input"], {"claimId": "c1", "source": "slack", "outcome": "unresolved"})
+        payload = self.case("full_context_slack")["input"]
+        frozen = self.module.freeze_claim_ledger(payload)
+        self.module.authorize_source_step(payload, frozen, "c1", "slack")
+        merged = self.module.merge_source_result(payload, {"claimId": "c1", "source": "slack", "outcome": "unresolved"}, frozen)
         self.assertEqual(merged["steps"], [])
         self.assertEqual(merged["status"], "abstain")
         self.assertEqual(merged["sourceCoverage"]["slack"]["status"], "checked")
 
     def test_resolved_claim_retains_the_source_that_resolved_it(self):
         payload = self.case("full_context_slack")["input"]
+        frozen = self.module.freeze_claim_ledger(payload)
+        self.module.authorize_source_step(payload, frozen, "c1", "slack")
         merged = self.module.merge_source_result(
             payload,
             {"claimId": "c1", "source": "slack", "outcome": "resolved"},
+            frozen,
         )
         self.assertEqual(
             merged["claimDispositions"][0],
@@ -149,11 +155,13 @@ class InvestigationPlanTests(unittest.TestCase):
 
     def test_unavailable_result_abstains_and_merge_rejects_wrong_step(self):
         payload = self.case("full_context_slack")["input"]
-        merged = self.module.merge_source_result(payload, {"claimId": "c1", "source": "slack", "outcome": "unavailable"})
+        frozen = self.module.freeze_claim_ledger(payload)
+        self.module.authorize_source_step(payload, frozen, "c1", "slack")
+        merged = self.module.merge_source_result(payload, {"claimId": "c1", "source": "slack", "outcome": "unavailable"}, frozen)
         self.assertEqual(merged["status"], "abstain")
         self.assertEqual(merged["sourceCoverage"]["slack"]["status"], "unavailable")
         with self.assertRaisesRegex(ValueError, "currently planned step"):
-            self.module.merge_source_result(payload, {"claimId": "c1", "source": "notion", "outcome": "resolved"})
+            self.module.merge_source_result(payload, {"claimId": "c1", "source": "notion", "outcome": "resolved"}, frozen)
 
     def test_source_call_authorization_rejects_an_unplanned_claim_before_the_call(self):
         authorize = getattr(self.module, "authorize_source_step", None)
@@ -344,8 +352,150 @@ class InvestigationPlanTests(unittest.TestCase):
                         "slack",
                     )
 
+    def test_frozen_authorization_rejects_reenabling_a_disabled_source(self):
+        payload = self.case("full_context_slack")["input"]
+        payload = {
+            **payload,
+            "missingEvidence": [
+                payload["missingEvidence"][0],
+                {**payload["missingEvidence"][0], "id": "c2"},
+            ],
+        }
+        frozen = self.module.freeze_claim_ledger(payload)
+        self.module.authorize_source_step(payload, frozen, "c1", "slack")
+        merged = self.module.merge_source_result(
+            payload,
+            {"claimId": "c1", "source": "slack", "outcome": "unavailable"},
+            frozen,
+        )
+        disabled = merged["planningState"]
+        self.assertFalse(disabled["capabilities"]["slack"])
+
+        reenabled = {
+            **disabled,
+            "capabilities": {**disabled["capabilities"], "slack": True},
+        }
+        with self.assertRaisesRegex(ValueError, "changed after freeze"):
+            self.module.authorize_source_step(
+                reenabled,
+                frozen,
+                "c2",
+                "slack",
+            )
+
+    def test_decisive_code_guard_allows_exactly_one_bounded_followup(self):
+        payload = self.case("mixed_smallest_set")["input"]
+        payload = {
+            **payload,
+            "missingEvidence": [payload["missingEvidence"][1]],
+        }
+        frozen = self.module.freeze_claim_ledger(payload)
+        first = self.module.authorize_source_step(
+            payload,
+            frozen,
+            "c2",
+            "code_context",
+        )
+        self.assertNotIn("continuation", first)
+
+        merged = self.module.merge_source_result(
+            payload,
+            {
+                "claimId": "c2",
+                "source": "code_context",
+                "outcome": "unresolved",
+                "decisiveGuard": {
+                    "symbol": "assertCurrencyMatchesOrder",
+                    "missing": "condition_or_safe_error_family",
+                },
+            },
+            frozen,
+        )
+        followup_state = merged["planningState"]
+        self.assertEqual(
+            merged["steps"],
+            [{
+                "claimId": "c2",
+                "claimKind": "implementation_behavior",
+                "source": "code_context",
+                "continuation": "decisive_code_guard",
+                "guardSymbol": "assertCurrencyMatchesOrder",
+            }],
+        )
+        self.assertEqual(
+            self.module.authorize_source_step(
+                followup_state,
+                frozen,
+                "c2",
+                "code_context",
+            ),
+            merged["steps"][0],
+        )
+
+        completed = self.module.merge_source_result(
+            followup_state,
+            {
+                "claimId": "c2",
+                "source": "code_context",
+                "outcome": "unresolved",
+            },
+            frozen,
+        )
+        self.assertEqual(completed["status"], "abstain")
+        with self.assertRaisesRegex(ValueError, "currently planned step"):
+            self.module.authorize_source_step(
+                completed["planningState"],
+                frozen,
+                "c2",
+                "code_context",
+            )
+
+        replay_frozen = self.module.freeze_claim_ledger(payload)
+        self.module.authorize_source_step(
+            payload,
+            replay_frozen,
+            "c2",
+            "code_context",
+        )
+        replay_merged = self.module.merge_source_result(
+            payload,
+            {
+                "claimId": "c2",
+                "source": "code_context",
+                "outcome": "unresolved",
+                "decisiveGuard": {
+                    "symbol": "assertCurrencyMatchesOrder",
+                    "missing": "condition_or_safe_error_family",
+                },
+            },
+            replay_frozen,
+        )
+        self.module.authorize_source_step(
+            replay_merged["planningState"],
+            replay_frozen,
+            "c2",
+            "code_context",
+        )
+        with self.assertRaisesRegex(ValueError, "decisive guard follow-up"):
+            self.module.merge_source_result(
+                replay_merged["planningState"],
+                {
+                    "claimId": "c2",
+                    "source": "code_context",
+                    "outcome": "unresolved",
+                    "decisiveGuard": {
+                        "symbol": "anotherGuard",
+                        "missing": "condition_or_safe_error_family",
+                    },
+                },
+                replay_frozen,
+            )
+
     def test_stopped_result_promotes_every_disposition_to_stopped(self):
-        merged = self.module.merge_source_result(self.case("full_context_slack")["input"], {"claimId": "c1", "source": "slack", "outcome": "stopped", "safeError": "masking_failed"})
+        payload = self.case("full_context_slack")["input"]
+        frozen = self.module.freeze_claim_ledger(payload)
+        self.module.authorize_source_step(payload, frozen, "c1", "slack")
+        merged = self.module.merge_source_result(payload, {"claimId": "c1", "source": "slack", "outcome": "stopped", "safeError": "masking_failed"}, frozen)
         self.assertEqual(merged["status"], "stopped")
         self.assertTrue(all(item["status"] == "stopped" for item in merged["sourceCoverage"].values()))
         self.assertTrue(all(item["status"] == "stopped" for item in merged["claimDispositions"]))

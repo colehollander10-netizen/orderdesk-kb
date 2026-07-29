@@ -65,7 +65,9 @@ Call `freeze_claim_ledger()` from `scripts/investigation_plan.py` before the
 first conditional source call, then pass that frozen ledger to
 `authorize_source_step()` immediately before every connector call. A refusal
 means the ledger changed or the call is outside the frozen plan and must not be
-attempted.
+attempted. Pass the same frozen ledger to `merge_source_result()` after the
+authorized call so capability changes, S3 eligibility, and the one-use
+decisive-code-guard continuation remain monotonic across the full investigation.
 
 S3 Logs is conditional, with only a synthetic vertical slice proven today. Call `s3_log_lookup` only for a concrete unresolved `runtime_event` after the gateway advertises the tool, Help Scout supplies a trustworthy correlation candidate, the private correlation record contains a bounded time window, logs could materially change the route, and the requested lookup kind is allowed. Passing those gates must cause the owner-side orchestrator—not the model—to grant the candidate from its private session/claim ledger; an ungranted handle must fail closed. Pass only `correlationHandle` and `lookupKind`; never place eligibility flags, operational identifiers, timestamps, S3 keys, prefixes, paths, ranges, queries, or limits in planner state or tool input. Record `s3_log_lookup_unavailable`, `correlation_unavailable`, `time_window_unavailable`, `log_not_material`, or `log_kind_unavailable` exactly when its gate fails. Do not substitute another AWS service or browse S3 generically.
 

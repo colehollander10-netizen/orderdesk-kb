@@ -518,7 +518,11 @@ def run_case(case: dict, tool_runner: dict[str, Callable[..., dict]] | None = No
                 evidence.extend(_bound_callback_evidence(envelope["evidence"], step))
             else:
                 evidence.extend(envelope.get("evidence", synthetic_evidence(case, step, outcome)))
-            plan = merge_source_result(state, {"claimId": step["claimId"], "source": source, "outcome": outcome})
+            plan = merge_source_result(
+                state,
+                {"claimId": step["claimId"], "source": source, "outcome": outcome},
+                frozen_claim_ledger,
+            )
             state = plan["planningState"]
         if plan["status"] == "stopped":
             break

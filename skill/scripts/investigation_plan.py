@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import re
 from typing import Any
 
 
@@ -30,6 +31,8 @@ LOG_LOOKUP_KINDS = {
     "shipment_tracking",
     "provider_api_error",
 }
+DECISIVE_GUARD_SYMBOL = re.compile(r"^[A-Za-z_][A-Za-z0-9_:.]{0,127}$")
+DECISIVE_GUARD_MISSING = "condition_or_safe_error_family"
 # Reviewed closed intake derivation. Unknown values never widen authority.
 QUESTION_CLAIM_MAP = {
     ("order_import", "provider_to_order_desk", "orders_delayed", "orders_imported"): (
@@ -118,13 +121,41 @@ def _validate_fact(fact: Any, index: int) -> dict[str, str]:
     return {"key": key, "value": _non_empty_string(item["value"], f"safeFacts[{index}].value")}
 
 
-def _validate_attempt(attempt: Any, index: int, claim_kind: str) -> dict[str, str]:
-    item = _require_keys(attempt, {"source", "outcome"}, f"attempts[{index}]")
+def _validate_decisive_guard(value: Any, label: str) -> dict[str, str]:
+    item = _require_keys(value, {"symbol", "missing"}, label)
+    if (
+        not isinstance(item["symbol"], str)
+        or DECISIVE_GUARD_SYMBOL.fullmatch(item["symbol"]) is None
+        or item["missing"] != DECISIVE_GUARD_MISSING
+    ):
+        raise ValueError("decisive guard continuation is invalid")
+    return copy.deepcopy(item)
+
+
+def _validate_attempt(attempt: Any, index: int, claim_kind: str) -> dict[str, Any]:
+    if not isinstance(attempt, dict):
+        raise ValueError(f"attempts[{index}] has unexpected fields")
+    expected = {"source", "outcome"}
+    if "decisiveGuard" in attempt:
+        expected.add("decisiveGuard")
+    item = _require_keys(attempt, expected, f"attempts[{index}]")
     if item["source"] not in CLAIM_SOURCE_ROUTES[claim_kind]:
         raise ValueError("attempt source is not eligible for claim")
     if item["outcome"] not in {"resolved", "unresolved", "unavailable"}:
         raise ValueError("attempt outcome is invalid")
-    return copy.deepcopy(item)
+    normalized = copy.deepcopy(item)
+    if "decisiveGuard" in item:
+        if (
+            claim_kind != "implementation_behavior"
+            or item["source"] != "code_context"
+            or item["outcome"] != "unresolved"
+        ):
+            raise ValueError("decisive guard continuation is invalid")
+        normalized["decisiveGuard"] = _validate_decisive_guard(
+            item["decisiveGuard"],
+            f"attempts[{index}].decisiveGuard",
+        )
+    return normalized
 
 
 def _validate_claim(claim: Any, index: int) -> dict[str, Any]:
@@ -276,6 +307,37 @@ def plan_claim(data: dict, claim: dict) -> tuple[dict, dict | None]:
     if not claim["safeQueryAvailable"]:
         skipped = [{"source": source, "reason": "safe_query_unavailable"} for source in routes]
         return _disposition(claim, "exhausted", None, "safe_query_unavailable", skipped), None
+    code_attempts = [
+        attempt
+        for attempt in claim["attempts"]
+        if attempt["source"] == "code_context"
+    ]
+    if (
+        claim["kind"] == "implementation_behavior"
+        and len(code_attempts) == 1
+        and "decisiveGuard" in code_attempts[0]
+    ):
+        if not data["capabilities"]["code_context"]:
+            return _disposition(
+                claim,
+                "unavailable",
+                None,
+                "capability_unavailable",
+                [{"source": "code_context", "reason": "capability_unavailable"}],
+            ), None
+        step = {
+            "claimId": claim["id"],
+            "claimKind": claim["kind"],
+            "source": "code_context",
+            "continuation": "decisive_code_guard",
+            "guardSymbol": code_attempts[0]["decisiveGuard"]["symbol"],
+        }
+        return _disposition(
+            claim,
+            "planned",
+            "code_context",
+            "next_eligible_source",
+        ), step
     attempted = {attempt["source"] for attempt in claim["attempts"]}
     skipped = []
     for source in routes:
@@ -465,7 +527,14 @@ def _frozen_claim_state(data: dict[str, Any]) -> dict[str, Any]:
 
 
 class _FrozenClaimLedger:
-    __slots__ = ("baseline", "authorized_sources", "observed_attempts")
+    __slots__ = (
+        "baseline",
+        "authorized_sources",
+        "observed_attempts",
+        "last_capabilities",
+        "last_s3_eligibility",
+        "last_hard_stop",
+    )
 
     def __init__(self, data: dict[str, Any]) -> None:
         self.baseline = copy.deepcopy(_frozen_claim_state(data))
@@ -475,6 +544,11 @@ class _FrozenClaimLedger:
         self.observed_attempts = {
             claim["id"]: [] for claim in self.baseline["claims"]
         }
+        self.last_capabilities = copy.deepcopy(self.baseline["capabilities"])
+        self.last_s3_eligibility = copy.deepcopy(
+            self.baseline["s3LogEligibility"]
+        )
+        self.last_hard_stop = self.baseline["hardStopError"]
 
 
 def freeze_claim_ledger(payload: object) -> object:
@@ -492,6 +566,7 @@ def _changed_after_freeze() -> ValueError:
 def _validate_frozen_authorization(
     data: dict[str, Any],
     frozen: object,
+    pending_result: tuple[str, str] | None = None,
 ) -> _FrozenClaimLedger:
     if not isinstance(frozen, _FrozenClaimLedger):
         raise _changed_after_freeze()
@@ -509,21 +584,24 @@ def _validate_frozen_authorization(
         if current[key] != baseline[key]:
             raise _changed_after_freeze()
 
-    if baseline["hardStopError"] is not None:
-        if current["hardStopError"] != baseline["hardStopError"]:
+    if frozen.last_hard_stop is not None:
+        if current["hardStopError"] != frozen.last_hard_stop:
             raise _changed_after_freeze()
     elif current["hardStopError"] is not None and current["hardStopError"] not in STOP_ERRORS:
         raise _changed_after_freeze()
 
-    for source, originally_available in baseline["capabilities"].items():
-        if not originally_available and current["capabilities"][source]:
+    for source, previously_available in frozen.last_capabilities.items():
+        if not previously_available and current["capabilities"][source]:
             raise _changed_after_freeze()
 
     for key in ("trustedCorrelation", "boundedTimeWindow", "materiallyChangesRoute"):
-        if not baseline["s3LogEligibility"][key] and current["s3LogEligibility"][key]:
+        if (
+            not frozen.last_s3_eligibility[key]
+            and current["s3LogEligibility"][key]
+        ):
             raise _changed_after_freeze()
     if not set(current["s3LogEligibility"]["lookupKinds"]).issubset(
-        baseline["s3LogEligibility"]["lookupKinds"]
+        frozen.last_s3_eligibility["lookupKinds"]
     ):
         raise _changed_after_freeze()
 
@@ -532,18 +610,37 @@ def _validate_frozen_authorization(
         data["safeFacts"],
         data["missingEvidence"],
     )
+    next_observed_attempts = {}
     for claim in claims:
         authorized = frozen.authorized_sources[claim["id"]]
         observed = frozen.observed_attempts[claim["id"]]
+        pending_for_claim = (
+            pending_result is not None and pending_result[0] == claim["id"]
+        )
+        completed_authorizations = (
+            authorized[:-1] if pending_for_claim else authorized
+        )
         if (
-            len(claim["attempts"]) != len(authorized)
+            pending_for_claim
+            and (
+                not authorized
+                or authorized[-1] != pending_result[1]
+            )
+        ):
+            raise _changed_after_freeze()
+        if (
+            len(claim["attempts"]) != len(completed_authorizations)
             or [
                 attempt["source"] for attempt in claim["attempts"]
-            ] != authorized
+            ] != completed_authorizations
             or claim["attempts"][:len(observed)] != observed
         ):
             raise _changed_after_freeze()
-        frozen.observed_attempts[claim["id"]] = copy.deepcopy(claim["attempts"])
+        next_observed_attempts[claim["id"]] = copy.deepcopy(claim["attempts"])
+    frozen.observed_attempts = next_observed_attempts
+    frozen.last_capabilities = copy.deepcopy(current["capabilities"])
+    frozen.last_s3_eligibility = copy.deepcopy(current["s3LogEligibility"])
+    frozen.last_hard_stop = current["hardStopError"]
     return frozen
 
 
@@ -574,13 +671,15 @@ def authorize_source_step(
     return copy.deepcopy(step)
 
 
-def validate_result(result: object) -> dict[str, str]:
+def validate_result(result: object) -> dict[str, Any]:
     if not isinstance(result, dict):
         raise ValueError("result must be an object")
     outcome = result.get("outcome")
     expected = {"claimId", "source", "outcome"}
     if outcome == "stopped":
         expected.add("safeError")
+    if isinstance(result, dict) and "decisiveGuard" in result:
+        expected.add("decisiveGuard")
     _require_keys(result, expected, "result")
     if outcome not in {"resolved", "unresolved", "unavailable", "stopped"}:
         raise ValueError("result outcome is invalid")
@@ -589,23 +688,55 @@ def validate_result(result: object) -> dict[str, str]:
         raise ValueError("result source is invalid")
     if outcome == "stopped" and result["safeError"] not in STOP_ERRORS:
         raise ValueError("result safeError is invalid")
-    return copy.deepcopy(result)
+    normalized = copy.deepcopy(result)
+    if "decisiveGuard" in result:
+        if result["source"] != "code_context" or outcome != "unresolved":
+            raise ValueError("decisive guard continuation is invalid")
+        normalized["decisiveGuard"] = _validate_decisive_guard(
+            result["decisiveGuard"],
+            "result.decisiveGuard",
+        )
+    return normalized
 
 
-def merge_source_result(payload: object, result: object) -> dict:
+def merge_source_result(
+    payload: object,
+    result: object,
+    frozen_claim_ledger: object,
+) -> dict:
     data = validate_planning_state(payload)
     current = plan_investigation(data)
     item = validate_result(result)
     planned = {(step["claimId"], step["source"]) for step in current["steps"]}
     if (item["claimId"], item["source"]) not in planned:
         raise ValueError("result must match a currently planned step")
+    frozen = _validate_frozen_authorization(
+        data,
+        frozen_claim_ledger,
+        (item["claimId"], item["source"]),
+    )
     claim = next(claim for claim in data["missingEvidence"] if claim["id"] == item["claimId"])
     if item["outcome"] == "stopped":
         data["hardStopError"] = item["safeError"]
+        frozen.authorized_sources[item["claimId"]].pop()
     else:
-        claim["attempts"].append({"source": item["source"], "outcome": item["outcome"]})
+        if (
+            "decisiveGuard" in item
+            and any("decisiveGuard" in attempt for attempt in claim["attempts"])
+        ):
+            raise ValueError("decisive guard follow-up is already consumed")
+        claim["attempts"].append({
+            "source": item["source"],
+            "outcome": item["outcome"],
+            **(
+                {"decisiveGuard": item["decisiveGuard"]}
+                if "decisiveGuard" in item
+                else {}
+            ),
+        })
         if item["outcome"] == "unavailable":
             data["capabilities"][item["source"]] = False
+    _validate_frozen_authorization(data, frozen)
     next_plan = plan_investigation(data)
     next_plan["planningState"] = data
     return next_plan
