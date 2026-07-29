@@ -22,6 +22,10 @@ or discussion into policy.
 **Recommended next step**
 Give one route and one concrete next action with a clear owner. If the evidence
 is insufficient, say what smallest governed fact or owner is needed next.
+Prefer a Support-owned check when an authorized current input, order field,
+configuration value, or request record can resolve the fork. Escalate to
+Engineering only after that fact indicates an implementation mismatch, or when
+Engineering is the only owner who can obtain it.
 
 **Reply Boundary**
 Customer-reply drafting is outside `/orderdesk`; no customer-facing wording was produced.

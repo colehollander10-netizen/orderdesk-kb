@@ -59,6 +59,25 @@ class InvestigationHarnessTests(unittest.TestCase):
         ]
 
     @staticmethod
+    def order_source_structure_evidence():
+        commit = "2222222222222222222222222222222222222222"
+        return [
+            {
+                "id": "code-order-source-fields",
+                "claim_key": "implementation_behavior",
+                "claim_value": "order_source_and_integration_source_are_distinct_nullable_fields",
+                "summary": "The order model stores order source and integration source as distinct nullable fields.",
+                "source_type": "code_context",
+                "safe_reference": f"synthetic/orderdesk-v3:src/Domain/Order/Entity/Order.php:104-108@{commit}",
+                "source_date": "2026-07-28",
+                "retrieved_at": "2026-07-28T18:00:00Z",
+                "authority": "supporting",
+                "claim_supported": "Order source and integration source are structurally distinct at the cited commit.",
+                "coverage": "Approved default-branch snapshot; one bounded entity passage.",
+            }
+        ]
+
+    @staticmethod
     def notion_code_mismatch_evidence():
         notion = {
             "id": "notion-retry-policy",
@@ -392,6 +411,36 @@ class InvestigationHarnessTests(unittest.TestCase):
         )
         for record in self.code_retry_evidence():
             self.assertIn(record["safe_reference"], result["brief"])
+
+    def test_structural_code_evidence_routes_a_support_verifiable_missing_fact_to_support(self):
+        case = {
+            "name": "order_source_structural_evidence",
+            "claims": ["documented_behavior", "implementation_behavior"],
+            "supportVerifiableMissingFact": "incoming_order_source_presence",
+            "responses": {
+                "public_kb": [{"outcome": "resolved"}],
+                "code_context": [
+                    {
+                        "outcome": "resolved",
+                        "evidence": self.order_source_structure_evidence(),
+                    }
+                ],
+            },
+        }
+
+        result = run_case(case)
+
+        self.assertEqual(
+            [item["source"] for item in result["callTrace"]],
+            ["help_scout_target", "public_kb", "code_context"],
+        )
+        self.assertEqual(result["route"], "Insufficient evidence — abstain")
+        self.assertEqual(
+            result["nextStep"],
+            "Have Support determine whether the incoming custom-app order contains a source value before escalating",
+        )
+        self.assertEqual(result["nextStepOwner"], "Support")
+        self.assertNotIn("notion", [item["source"] for item in result["callTrace"]])
 
     def test_code_and_slack_supporting_evidence_cannot_route_to_a_code_change(self):
         case = {

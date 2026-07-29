@@ -155,6 +155,52 @@ class InvestigationPlanTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "currently planned step"):
             self.module.merge_source_result(payload, {"claimId": "c1", "source": "notion", "outcome": "resolved"})
 
+    def test_source_call_authorization_rejects_an_unplanned_claim_before_the_call(self):
+        authorize = getattr(self.module, "authorize_source_step", None)
+        freeze = getattr(self.module, "freeze_claim_ledger", None)
+        self.assertIsNotNone(authorize, "planner must expose pre-call authorization")
+        self.assertIsNotNone(freeze, "planner must expose claim-ledger freezing")
+        payload = self.case("mixed_smallest_set")["input"]
+        frozen_ledger = freeze(payload)
+
+        self.assertEqual(
+            authorize(payload, frozen_ledger, "c1", "public_kb"),
+            {
+                "claimId": "c1",
+                "claimKind": "documented_behavior",
+                "source": "public_kb",
+            },
+        )
+
+        attempted = {
+            **payload,
+            "missingEvidence": [
+                {
+                    **payload["missingEvidence"][0],
+                    "attempts": [{"source": "public_kb", "outcome": "unresolved"}],
+                },
+                {
+                    **payload["missingEvidence"][1],
+                    "attempts": [{"source": "code_context", "outcome": "resolved"}],
+                },
+                payload["missingEvidence"][2],
+                {
+                    "id": "new-intent-claim",
+                    "kind": "intended_process",
+                    "status": "unresolved",
+                    "safeQueryAvailable": True,
+                    "attempts": [],
+                },
+            ],
+        }
+        with self.assertRaisesRegex(ValueError, "claim ledger changed after freeze"):
+            authorize(
+                attempted,
+                frozen_ledger,
+                "new-intent-claim",
+                "notion",
+            )
+
     def test_stopped_result_promotes_every_disposition_to_stopped(self):
         merged = self.module.merge_source_result(self.case("full_context_slack")["input"], {"claimId": "c1", "source": "slack", "outcome": "stopped", "safeError": "masking_failed"})
         self.assertEqual(merged["status"], "stopped")

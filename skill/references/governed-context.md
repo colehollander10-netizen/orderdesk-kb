@@ -6,6 +6,13 @@ Read this file before any `orderdesk_context` call. Use only the configured comp
 
 A positive ticket-number invocation authorizes only the conditional governed source set selected after fact-only Help Scout intake. Do not interrupt for per-source permission. Before every call, record the closed unresolved claim it can establish. Availability alone is not a reason to read a source.
 
+Freeze that ticket-derived claim ledger before the first conditional source
+call. A source result can resolve, exhaust, or make unavailable only an existing
+claim; it cannot authorize a new claim or source. Before every private call,
+require the exact `claimId` and source to appear together in the latest planner
+`steps`. A desire to learn intent after a code result does not create an
+`intended_process` claim.
+
 For a whole-product benchmark, run the exact content-free runtime handshake
 before selecting or opening a ticket. Send one JSON object on standard input
 to `python3 scripts/runtime_preflight.py` with exactly `helpScoutCapabilities`,
@@ -31,6 +38,10 @@ Use `notion_search` only for `intended_process`, with non-identifying product, p
 
 Record the title query, result cap, selected pages, block caps, dates, and retrieval time. An empty result is `no title match in the bounded query`; page bodies remained unchecked, so this is not a comprehensive Notion absence. Authority depends on ownership, purpose, and freshness.
 
+The `intended_process` claim must already exist in the frozen ticket-derived
+ledger. Missing assignment logic, design intent, or deployment proof in a code
+result does not authorize a Notion search.
+
 ### Code context
 
 Use `code_context` only for `implementation_behavior`, with a bounded safe product or behavior question. The gateway searches an approved default-branch snapshot and returns a small number of passages with repository, path, line, and immutable commit citations. Do not request a branch, tag, commit, history, blocked path, secret-bearing file, or deprecated code-search endpoint.
@@ -55,6 +66,15 @@ unconfirmed. Escalate to Engineering only if the compared values satisfy the
 guard and the operation still fails, or the deployed behavior differs from the
 cited commit. Code-only evidence must never become an automatic **Likely code
 change** route.
+
+The same discipline applies when code establishes only a structural distinction,
+such as two separate nullable fields, without showing assignment or default
+logic. State only that the fields can differ; do not infer that one is derived,
+defaulted, ignored, or displayed from the other. If an authorized Support view
+can establish whether the incoming record contains the disputed value, freeze
+the frame and make that the Support-owned next fact under **Insufficient
+evidence — abstain**. Do not add an `intended_process` claim solely because the
+code result did not establish intent.
 
 ### S3 Logs
 

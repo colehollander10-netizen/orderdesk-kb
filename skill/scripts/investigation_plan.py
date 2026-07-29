@@ -427,6 +427,62 @@ def plan_investigation(payload: object) -> dict:
     }
 
 
+def _claim_ledger(data: dict[str, Any]) -> list[dict[str, Any]]:
+    claims = build_claims(
+        data["sanitizedQuestion"],
+        data["safeFacts"],
+        data["missingEvidence"],
+    )
+    return [
+        {
+            "id": claim["id"],
+            "kind": claim["kind"],
+            "safeQueryAvailable": claim["safeQueryAvailable"],
+            **(
+                {"logLookupKind": claim["logLookupKind"]}
+                if claim["kind"] == "runtime_event"
+                else {}
+            ),
+        }
+        for claim in claims
+    ]
+
+
+def freeze_claim_ledger(payload: object) -> list[dict[str, Any]]:
+    """Freeze the ticket-derived claim identities before any source attempt."""
+    data = validate_planning_state(payload)
+    if any(claim["attempts"] for claim in data["missingEvidence"]):
+        raise ValueError("claim ledger must be frozen before source attempts")
+    return copy.deepcopy(_claim_ledger(data))
+
+
+def authorize_source_step(
+    payload: object,
+    frozen_claim_ledger: object,
+    claim_id: str,
+    source: str,
+) -> dict[str, Any]:
+    """Return one currently planned source step before any connector call."""
+    data = validate_planning_state(payload)
+    if frozen_claim_ledger != _claim_ledger(data):
+        raise ValueError("claim ledger changed after freeze")
+    _non_empty_string(claim_id, "claimId")
+    if source not in SOURCE_NAMES[1:]:
+        raise ValueError("source is invalid")
+    current = plan_investigation(data)
+    step = next(
+        (
+            item
+            for item in current["steps"]
+            if item["claimId"] == claim_id and item["source"] == source
+        ),
+        None,
+    )
+    if step is None:
+        raise ValueError("source call must match a currently planned step")
+    return copy.deepcopy(step)
+
+
 def validate_result(result: object) -> dict[str, str]:
     if not isinstance(result, dict):
         raise ValueError("result must be an object")

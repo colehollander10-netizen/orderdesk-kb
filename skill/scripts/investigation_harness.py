@@ -6,7 +6,14 @@ from typing import Any, Callable
 
 from .brief_evidence import evaluate_evidence
 from .investigation_findings import derive_cross_source_findings
-from .investigation_plan import STOP_ERRORS, merge_source_result, plan_investigation, stopped_plan
+from .investigation_plan import (
+    STOP_ERRORS,
+    authorize_source_step,
+    freeze_claim_ledger,
+    merge_source_result,
+    plan_investigation,
+    stopped_plan,
+)
 
 
 SOURCE_TYPE = {
@@ -48,6 +55,12 @@ ROUTE_DISPLAY = {
     "Likely code change": "Engineering review",
     "Manual admin action / product gap": "Product or admin follow-up",
     "Insufficient evidence — abstain": "More evidence is needed",
+}
+SUPPORT_VERIFIABLE_NEXT_FACTS = {
+    "incoming_order_source_presence": (
+        "Have Support determine whether the incoming custom-app order contains "
+        "a source value before escalating"
+    ),
 }
 
 
@@ -166,6 +179,14 @@ def _route(case: dict, plan: dict, evidence_result: dict, findings: list[dict]) 
     )
     if informal_mismatch:
         return informal_mismatch["route"], informal_mismatch["nextStep"]
+    support_next_fact = SUPPORT_VERIFIABLE_NEXT_FACTS.get(
+        case.get("supportVerifiableMissingFact")
+    )
+    if support_next_fact and any(
+        item["source_type"] == "code_context"
+        for item in evidence_result["evidence"]
+    ):
+        return "Insufficient evidence — abstain", support_next_fact
     if "implementation_behavior" in kinds and not ({"intended_process", "runtime_event"} & kinds):
         code_evidence = [item for item in evidence_result["evidence"] if item["source_type"] == "code_context"]
         if code_evidence and all(item["authority"] == "supporting" for item in code_evidence):
@@ -285,6 +306,8 @@ def _next_step_owner(route: str, next_step: str) -> str:
         return "Support reviewer"
     if "process owner" in next_step:
         return "Process owner"
+    if next_step.startswith("Have Support "):
+        return "Support"
     return ROUTE_OWNER[route]
 
 
@@ -414,10 +437,17 @@ def run_case(case: dict, tool_runner: dict[str, Callable[..., dict]] | None = No
     responses = {source: list(tokens) for source, tokens in case.get("responses", {}).items()}
     trace = [{"source": "help_scout_target", "claimId": None, "outcome": "checked", "handleTransit": False}]
     evidence: list[dict] = []
+    frozen_claim_ledger = freeze_claim_ledger(state)
     plan = plan_investigation(state)
     while plan["status"] == "running":
         for step in plan["steps"]:
             source = step["source"]
+            authorize_source_step(
+                state,
+                frozen_claim_ledger,
+                step["claimId"],
+                source,
+            )
             handle = private_correlation_handle if source == "s3_logs" else None
             if tool_runner and source in tool_runner:
                 envelope = tool_runner[source](step, handle)
