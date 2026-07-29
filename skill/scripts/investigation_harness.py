@@ -82,6 +82,27 @@ def _callback_envelope(value: object) -> dict[str, Any]:
     return dict(value)
 
 
+def _bound_callback_evidence(records: list[object], step: dict) -> list[dict]:
+    expected_source_type = SOURCE_TYPE[step["source"]]
+    expected_authority = AUTHORITY[step["source"]]
+    bound = []
+    for value in records:
+        if not isinstance(value, dict):
+            raise ValueError("synthetic callback evidence is invalid")
+        record = dict(value)
+        if (
+            record.pop("claim_id", None) != step["claimId"]
+            or record.pop("claim_kind", None) != step["claimKind"]
+            or record.get("source_type") != expected_source_type
+            or record.get("authority") != expected_authority
+        ):
+            raise ValueError("synthetic callback evidence exceeds the authorized step")
+        record["source_type"] = expected_source_type
+        record["authority"] = expected_authority
+        bound.append(record)
+    return bound
+
+
 def expand_case_input(case: dict) -> dict:
     """Convert closed synthetic labels into the planner's complete safe state."""
     claims = []
@@ -469,7 +490,10 @@ def run_case(case: dict, tool_runner: dict[str, Callable[..., dict]] | None = No
                     "claims": stopped["claimDispositions"],
                     "callTrace": trace,
                 }
-            evidence.extend(envelope.get("evidence", synthetic_evidence(case, step, outcome)))
+            if tool_runner and source in tool_runner and "evidence" in envelope:
+                evidence.extend(_bound_callback_evidence(envelope["evidence"], step))
+            else:
+                evidence.extend(envelope.get("evidence", synthetic_evidence(case, step, outcome)))
             plan = merge_source_result(state, {"claimId": step["claimId"], "source": source, "outcome": outcome})
             state = plan["planningState"]
         if plan["status"] == "stopped":

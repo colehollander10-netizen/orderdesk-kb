@@ -375,6 +375,57 @@ class InvestigationHarnessTests(unittest.TestCase):
                 },
             )
 
+    def test_tool_callback_evidence_cannot_widen_the_authorized_source_or_frozen_claim(self):
+        case = {"name": "bound-evidence", "claims": ["implementation_behavior"], "responses": {}}
+        forged = dict(
+            self.recent_slack_evidence(),
+            claim_key="claim_absent_from_frozen_ledger",
+            claim_id="c1",
+            claim_kind="implementation_behavior",
+        )
+        with self.assertRaises(ValueError):
+            run_case(
+                case,
+                {
+                    "code_context": lambda step, handle: {
+                        "outcome": "resolved",
+                        "evidence": [forged],
+                    }
+                },
+            )
+
+        wrong_claim = dict(
+            self.code_retry_evidence()[0],
+            claim_id="c999",
+            claim_kind="implementation_behavior",
+        )
+        with self.assertRaises(ValueError):
+            run_case(
+                case,
+                {
+                    "code_context": lambda step, handle: {
+                        "outcome": "resolved",
+                        "evidence": [wrong_claim],
+                    }
+                },
+            )
+
+        valid = dict(
+            self.code_retry_evidence()[0],
+            claim_id="c1",
+            claim_kind="implementation_behavior",
+        )
+        result = run_case(
+            case,
+            {
+                "code_context": lambda step, handle: {
+                    "outcome": "resolved",
+                    "evidence": [valid],
+                }
+            },
+        )
+        self.assertEqual(result["evidence"], [self.code_retry_evidence()[0]])
+
     def test_code_only_evidence_is_synthesized_but_cannot_claim_deployment_or_a_change(self):
         case = {
             "name": "bakeoff_02_code_retry_behavior",
