@@ -235,6 +235,115 @@ class InvestigationPlanTests(unittest.TestCase):
                 ):
                     authorize(mutation, frozen_ledger, "c1", "public_kb")
 
+    def test_frozen_authorization_rejects_gate_widening_and_attempt_rollback(self):
+        authorize = self.module.authorize_source_step
+        freeze = self.module.freeze_claim_ledger
+
+        slack = self.case("full_context_slack")["input"]
+        disabled_slack = {
+            **slack,
+            "capabilities": {**slack["capabilities"], "slack": False},
+        }
+        with self.assertRaisesRegex(ValueError, "changed after freeze"):
+            authorize(
+                {**disabled_slack, "capabilities": {**disabled_slack["capabilities"], "slack": True}},
+                freeze(disabled_slack),
+                "c1",
+                "slack",
+            )
+
+        stopped = {**slack, "hardStopError": "masking_failed"}
+        with self.assertRaisesRegex(ValueError, "changed after freeze"):
+            authorize(
+                {**stopped, "hardStopError": None},
+                freeze(stopped),
+                "c1",
+                "slack",
+            )
+
+        runtime = self.case("s3_runtime")["input"]
+        ineligible = {
+            **runtime,
+            "s3LogEligibility": {
+                **runtime["s3LogEligibility"],
+                "trustedCorrelation": False,
+            },
+        }
+        with self.assertRaisesRegex(ValueError, "changed after freeze"):
+            authorize(
+                {
+                    **ineligible,
+                    "s3LogEligibility": {
+                        **ineligible["s3LogEligibility"],
+                        "trustedCorrelation": True,
+                    },
+                },
+                freeze(ineligible),
+                "c1",
+                "s3_logs",
+            )
+
+        mixed = self.case("mixed_smallest_set")["input"]
+        frozen = freeze(mixed)
+        authorize(mixed, frozen, "c1", "public_kb")
+        after_public = {
+            **mixed,
+            "missingEvidence": [
+                {
+                    **mixed["missingEvidence"][0],
+                    "attempts": [{"source": "public_kb", "outcome": "unresolved"}],
+                },
+                *mixed["missingEvidence"][1:],
+            ],
+        }
+        authorize(after_public, frozen, "c2", "code_context")
+        rolled_back = {
+            **mixed,
+            "missingEvidence": [
+                mixed["missingEvidence"][0],
+                {
+                    **mixed["missingEvidence"][1],
+                    "attempts": [{"source": "code_context", "outcome": "unresolved"}],
+                },
+                mixed["missingEvidence"][2],
+            ],
+        }
+        with self.assertRaisesRegex(ValueError, "changed after freeze"):
+            authorize(rolled_back, frozen, "c1", "public_kb")
+
+        changed_outcome = {
+            **after_public,
+            "missingEvidence": [
+                {
+                    **after_public["missingEvidence"][0],
+                    "attempts": [{"source": "public_kb", "outcome": "resolved"}],
+                },
+                {
+                    **after_public["missingEvidence"][1],
+                    "attempts": [{"source": "code_context", "outcome": "unresolved"}],
+                },
+                after_public["missingEvidence"][2],
+            ],
+        }
+        with self.assertRaisesRegex(ValueError, "changed after freeze"):
+            authorize(changed_outcome, frozen, "c1", "public_kb")
+
+        for mutation in [
+            {"targetContextState": "blocked"},
+            {"targetAttachmentCoverage": "partial"},
+            {"decisiveEvidenceAttachmentOnly": True},
+        ]:
+            with self.subTest(mutation=mutation):
+                payload = self.case("full_context_slack")["input"]
+                frozen_payload = {**payload, **mutation}
+                with self.assertRaisesRegex(ValueError, "changed after freeze"):
+                    authorize(
+                        payload,
+                        freeze(frozen_payload),
+                        "c1",
+                        "slack",
+                    )
+
     def test_stopped_result_promotes_every_disposition_to_stopped(self):
         merged = self.module.merge_source_result(self.case("full_context_slack")["input"], {"claimId": "c1", "source": "slack", "outcome": "stopped", "safeError": "masking_failed"})
         self.assertEqual(merged["status"], "stopped")

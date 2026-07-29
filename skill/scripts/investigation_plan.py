@@ -437,6 +437,7 @@ def _claim_ledger(data: dict[str, Any]) -> list[dict[str, Any]]:
         {
             "id": claim["id"],
             "kind": claim["kind"],
+            "status": claim["status"],
             "safeQueryAvailable": claim["safeQueryAvailable"],
             **(
                 {"logLookupKind": claim["logLookupKind"]}
@@ -450,18 +451,100 @@ def _claim_ledger(data: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _frozen_claim_state(data: dict[str, Any]) -> dict[str, Any]:
     return {
+        "ticketNumber": data["ticketNumber"],
+        "targetContextState": data["targetContextState"],
         "sanitizedQuestion": copy.deepcopy(data["sanitizedQuestion"]),
         "safeFacts": copy.deepcopy(data["safeFacts"]),
         "claims": _claim_ledger(data),
+        "capabilities": copy.deepcopy(data["capabilities"]),
+        "s3LogEligibility": copy.deepcopy(data["s3LogEligibility"]),
+        "hardStopError": data["hardStopError"],
+        "targetAttachmentCoverage": data["targetAttachmentCoverage"],
+        "decisiveEvidenceAttachmentOnly": data["decisiveEvidenceAttachmentOnly"],
     }
 
 
-def freeze_claim_ledger(payload: object) -> dict[str, Any]:
+class _FrozenClaimLedger:
+    __slots__ = ("baseline", "authorized_sources", "observed_attempts")
+
+    def __init__(self, data: dict[str, Any]) -> None:
+        self.baseline = copy.deepcopy(_frozen_claim_state(data))
+        self.authorized_sources = {
+            claim["id"]: [] for claim in self.baseline["claims"]
+        }
+        self.observed_attempts = {
+            claim["id"]: [] for claim in self.baseline["claims"]
+        }
+
+
+def freeze_claim_ledger(payload: object) -> object:
     """Freeze the ticket-derived claim identities before any source attempt."""
     data = validate_planning_state(payload)
     if any(claim["attempts"] for claim in data["missingEvidence"]):
         raise ValueError("claim ledger must be frozen before source attempts")
-    return copy.deepcopy(_frozen_claim_state(data))
+    return _FrozenClaimLedger(data)
+
+
+def _changed_after_freeze() -> ValueError:
+    return ValueError("claim ledger changed after freeze")
+
+
+def _validate_frozen_authorization(
+    data: dict[str, Any],
+    frozen: object,
+) -> _FrozenClaimLedger:
+    if not isinstance(frozen, _FrozenClaimLedger):
+        raise _changed_after_freeze()
+    baseline = frozen.baseline
+    current = _frozen_claim_state(data)
+    for key in (
+        "ticketNumber",
+        "targetContextState",
+        "sanitizedQuestion",
+        "safeFacts",
+        "claims",
+        "targetAttachmentCoverage",
+        "decisiveEvidenceAttachmentOnly",
+    ):
+        if current[key] != baseline[key]:
+            raise _changed_after_freeze()
+
+    if baseline["hardStopError"] is not None:
+        if current["hardStopError"] != baseline["hardStopError"]:
+            raise _changed_after_freeze()
+    elif current["hardStopError"] is not None and current["hardStopError"] not in STOP_ERRORS:
+        raise _changed_after_freeze()
+
+    for source, originally_available in baseline["capabilities"].items():
+        if not originally_available and current["capabilities"][source]:
+            raise _changed_after_freeze()
+
+    for key in ("trustedCorrelation", "boundedTimeWindow", "materiallyChangesRoute"):
+        if not baseline["s3LogEligibility"][key] and current["s3LogEligibility"][key]:
+            raise _changed_after_freeze()
+    if not set(current["s3LogEligibility"]["lookupKinds"]).issubset(
+        baseline["s3LogEligibility"]["lookupKinds"]
+    ):
+        raise _changed_after_freeze()
+
+    claims = build_claims(
+        data["sanitizedQuestion"],
+        data["safeFacts"],
+        data["missingEvidence"],
+    )
+    for claim in claims:
+        authorized = frozen.authorized_sources[claim["id"]]
+        observed = frozen.observed_attempts[claim["id"]]
+        if (
+            len(claim["attempts"]) != len(authorized)
+            or [
+                attempt["source"] for attempt in claim["attempts"]
+            ] != authorized
+            or claim["attempts"][:len(observed)] != observed
+        ):
+            raise _changed_after_freeze()
+        frozen.observed_attempts[claim["id"]] = copy.deepcopy(claim["attempts"])
+    return frozen
 
 
 def authorize_source_step(
@@ -472,8 +555,7 @@ def authorize_source_step(
 ) -> dict[str, Any]:
     """Return one currently planned source step before any connector call."""
     data = validate_planning_state(payload)
-    if frozen_claim_ledger != _frozen_claim_state(data):
-        raise ValueError("claim ledger changed after freeze")
+    frozen = _validate_frozen_authorization(data, frozen_claim_ledger)
     _non_empty_string(claim_id, "claimId")
     if source not in SOURCE_NAMES[1:]:
         raise ValueError("source is invalid")
@@ -488,6 +570,7 @@ def authorize_source_step(
     )
     if step is None:
         raise ValueError("source call must match a currently planned step")
+    frozen.authorized_sources[claim_id].append(source)
     return copy.deepcopy(step)
 
 
