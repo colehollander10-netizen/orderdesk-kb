@@ -332,6 +332,27 @@ def _next_step_owner(route: str, next_step: str) -> str:
     return ROUTE_OWNER[route]
 
 
+def _next_step_category(route: str, next_step: str) -> str:
+    if "S3 Logs contract owner" in next_step:
+        return "contract_owner_handoff"
+    if "human reviewer" in next_step:
+        return "human_evidence_review"
+    if "process owner" in next_step:
+        return "process_owner_confirmation"
+    if next_step.startswith("Have Support "):
+        return "support_verification"
+    if "Engineering" in next_step:
+        return "engineering_verification"
+    return {
+        "Support can answer": "support_response",
+        "Store configuration / Rule Builder": "store_configuration",
+        "Logs or runtime investigation": "runtime_investigation",
+        "Likely code change": "engineering_handoff",
+        "Manual admin action / product gap": "manual_admin_action",
+        "Insufficient evidence — abstain": "obtain_governed_evidence",
+    }[route]
+
+
 def build_brief_decision(
     planning_state: dict,
     plan: dict,
@@ -396,6 +417,8 @@ def build_brief_decision(
         "unknowns": sorted(set(unknowns)),
         "findings": findings,
         "route": route,
+        "next_step_category": _next_step_category(route, next_step),
+        "next_step": next_step,
         "next_step_owner": _next_step_owner(route, next_step),
     }
 
@@ -404,8 +427,7 @@ def render_brief(
     sanitized_question: dict,
     plan: dict,
     evidence_result: dict,
-    route: str,
-    next_step: str,
+    brief_decision: dict,
     interpretation: dict[str, str],
 ) -> str:
     observed = sanitized_question["observedBehavior"].replace("_", " ")
@@ -433,7 +455,9 @@ def render_brief(
     if interpretation["unknown"] != "No unresolved claim.":
         meaning_parts.append(interpretation["unknown"])
     meaning = " ".join(meaning_parts)
-    owner = _next_step_owner(route, next_step)
+    route = brief_decision["route"]
+    next_step = brief_decision["next_step"]
+    owner = brief_decision["next_step_owner"]
     return "\n\n".join((
         "**Support Investigation Brief**",
         (
@@ -517,8 +541,7 @@ def run_case(case: dict, tool_runner: dict[str, Callable[..., dict]] | None = No
         state["sanitizedQuestion"],
         plan,
         evidence_result,
-        route,
-        next_step,
+        brief_decision,
         interpretation,
     )
     return {
@@ -530,7 +553,7 @@ def run_case(case: dict, tool_runner: dict[str, Callable[..., dict]] | None = No
         "callTrace": trace,
         "claims": plan["claimDispositions"],
         "route": route,
-        "nextStep": next_step,
+        "nextStep": brief_decision["next_step"],
         "nextStepOwner": brief_decision["next_step_owner"],
         "briefDecision": brief_decision,
         "brief": brief,

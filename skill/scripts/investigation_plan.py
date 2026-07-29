@@ -448,12 +448,20 @@ def _claim_ledger(data: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def freeze_claim_ledger(payload: object) -> list[dict[str, Any]]:
+def _frozen_claim_state(data: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "sanitizedQuestion": copy.deepcopy(data["sanitizedQuestion"]),
+        "safeFacts": copy.deepcopy(data["safeFacts"]),
+        "claims": _claim_ledger(data),
+    }
+
+
+def freeze_claim_ledger(payload: object) -> dict[str, Any]:
     """Freeze the ticket-derived claim identities before any source attempt."""
     data = validate_planning_state(payload)
     if any(claim["attempts"] for claim in data["missingEvidence"]):
         raise ValueError("claim ledger must be frozen before source attempts")
-    return copy.deepcopy(_claim_ledger(data))
+    return copy.deepcopy(_frozen_claim_state(data))
 
 
 def authorize_source_step(
@@ -464,7 +472,7 @@ def authorize_source_step(
 ) -> dict[str, Any]:
     """Return one currently planned source step before any connector call."""
     data = validate_planning_state(payload)
-    if frozen_claim_ledger != _claim_ledger(data):
+    if frozen_claim_ledger != _frozen_claim_state(data):
         raise ValueError("claim ledger changed after freeze")
     _non_empty_string(claim_id, "claimId")
     if source not in SOURCE_NAMES[1:]:

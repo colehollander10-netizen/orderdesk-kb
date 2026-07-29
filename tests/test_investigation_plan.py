@@ -201,6 +201,40 @@ class InvestigationPlanTests(unittest.TestCase):
                 "notion",
             )
 
+        query_mutations = [
+            {
+                **payload,
+                "safeFacts": [
+                    *payload["safeFacts"],
+                    {"key": "provider_family", "value": "newly-added-after-freeze"},
+                ],
+            },
+            {
+                **payload,
+                "sanitizedQuestion": {
+                    **payload["sanitizedQuestion"],
+                    "safeTerms": [
+                        *payload["sanitizedQuestion"]["safeTerms"],
+                        "newly-added-after-freeze",
+                    ],
+                },
+            },
+            {
+                **payload,
+                "sanitizedQuestion": {
+                    **payload["sanitizedQuestion"],
+                    "observedBehavior": "changed_after_freeze",
+                },
+            },
+        ]
+        for mutation in query_mutations:
+            with self.subTest(mutation=mutation):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "claim ledger changed after freeze",
+                ):
+                    authorize(mutation, frozen_ledger, "c1", "public_kb")
+
     def test_stopped_result_promotes_every_disposition_to_stopped(self):
         merged = self.module.merge_source_result(self.case("full_context_slack")["input"], {"claimId": "c1", "source": "slack", "outcome": "stopped", "safeError": "masking_failed"})
         self.assertEqual(merged["status"], "stopped")

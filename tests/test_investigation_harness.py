@@ -249,6 +249,9 @@ class InvestigationHarnessTests(unittest.TestCase):
     def test_brief_renderer_contains_support_sections_and_hides_operator_ledger(self):
         result = run_case(next(item for item in CASES if item["name"] == "target_kb"))
         brief = result["brief"]
+        manifest = json.loads(
+            (ROOT / "skill" / "contracts" / "investigation.json").read_text()
+        )
         for section in ("**What the customer needs**", "**What I found**", "**What this means**", "**Recommended next step**", "**Reply Boundary**"):
             self.assertIn(section, brief)
         for operator_section in ("**Investigation Plan**", "**What I Checked**", "**Coverage and Freshness**", "**Source Ledger**", "**Conflicts**", "**Unknowns**"):
@@ -257,18 +260,23 @@ class InvestigationHarnessTests(unittest.TestCase):
         self.assertIn("synthetic-public_kb", brief)
         self.assertEqual(
             set(result["briefDecision"]),
-            {
-                "sanitized_question",
-                "claim_dispositions",
-                "source_coverage",
-                "accepted_evidence",
-                "conflicts",
-                "unknowns",
-                "findings",
-                "route",
-                "next_step_owner",
-            },
+            set(manifest["decisionFrame"]["fields"]),
         )
+        self.assertEqual(result["nextStep"], result["briefDecision"]["next_step"])
+        self.assertIn(result["nextStep"], brief)
+        self.assertIn(result["briefDecision"]["next_step_category"], {
+            "support_response",
+            "store_configuration",
+            "runtime_investigation",
+            "engineering_handoff",
+            "manual_admin_action",
+            "obtain_governed_evidence",
+            "human_evidence_review",
+            "contract_owner_handoff",
+            "support_verification",
+            "engineering_verification",
+            "process_owner_confirmation",
+        })
         self.assertNotIn("correlationHandle", brief)
         self.assertNotIn("rawTicketText", brief)
 

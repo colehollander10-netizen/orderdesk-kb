@@ -18,7 +18,7 @@
   "decisionFrame": {
     "backgroundOnly": true,
     "naturalLanguageMayVary": true,
-    "fields": ["sanitized_question", "claim_dispositions", "source_coverage", "accepted_evidence", "conflicts", "unknowns", "route", "next_step_owner"]
+    "fields": ["sanitized_question", "claim_dispositions", "source_coverage", "accepted_evidence", "conflicts", "unknowns", "findings", "route", "next_step_category", "next_step", "next_step_owner"]
   },
   "requiredBriefSections": ["What the customer needs", "What I found", "What this means", "Recommended next step", "Reply Boundary"],
   "stopErrors": ["support_context_blocked", "runtime_contract_mismatch", "policy_denied", "scope_denied", "unsafe_query", "masking_failed", "audit_failed", "handle_integrity_failed", "credential_boundary_failed"],
